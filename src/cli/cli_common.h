@@ -51,7 +51,10 @@ namespace color {
     inline const char* clear_line = "\033[2K\r";
 }
 
-inline const char* RA_VERSION = "v0.1.0";
+#ifndef RCLI_VERSION
+#define RCLI_VERSION "0.0.0"
+#endif
+inline const char* RA_VERSION = "v" RCLI_VERSION;
 
 // =============================================================================
 // Terminal utilities

@@ -179,6 +179,10 @@ target_compile_options(rcli_cli PRIVATE
     -Wno-unused-parameter
 )
 
+target_compile_definitions(rcli_cli PRIVATE
+    RCLI_VERSION="${PROJECT_VERSION}"
+)
+
 # =============================================================================
 # rcli_test — test executable
 # =============================================================================

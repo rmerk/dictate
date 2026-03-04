@@ -576,7 +576,7 @@ private:
                         std::to_string(chip_.e_cores) + "E)";
 
         return hbox({
-            text(" RCLI v0.1.0 ") | ftxui::bold | ftxui::color(theme_.accent),
+            text(" RCLI " + std::string(RA_VERSION) + " ") | ftxui::bold | ftxui::color(theme_.accent),
             text(" | "),
             text(chip_.chip_name) | ftxui::bold,
             text(" | "),
