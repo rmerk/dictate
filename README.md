@@ -2,7 +2,9 @@
   <img src="assets/terminal.png" alt="RCLI" width="700" />
 </p>
 
-<h3 align="center">Talk to your Mac, query your docs, no cloud required.</h3>
+<h2 align="center"><a href="https://www.runanywhere.ai"><img src="https://img.shields.io/badge/RCLI-RunAnywhere_Command_Line_Interface-FF4500?style=for-the-badge&labelColor=1a1a2e" alt="RCLI — RunAnywhere Command Line Interface"></a></h2>
+
+<p align="center"><i>Talk to your Mac, query your docs, no cloud required.</i></p>
 
 <p align="center">
   <a href="https://github.com/RunanywhereAI/RCLI"><img src="https://img.shields.io/badge/platform-macOS-blue" alt="macOS"></a>
@@ -315,5 +317,5 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for build inst
 MIT License. See [LICENSE](LICENSE) for details.
 
 <p align="center">
-  Powered by <a href="https://github.com/RunanywhereAI">RunAnywhere, Inc.</a>
+  Powered by <a href="https://www.runanywhere.ai">RunAnywhere, Inc.</a>
 </p>
