@@ -44,9 +44,9 @@ The `--actions-only` suite runs without any model downloads and is a good smoke 
 ## Architecture Overview
 
 ```
-Mic --> VAD --> STT --> [RAG] --> LLM --> TTS --> Speaker
-                                  |
-                           Tool Calling --> macOS Actions
+Mic → VAD → STT → [RAG] → LLM → TTS → Speaker
+                            |
+                     Tool Calling → macOS Actions
 ```
 
 Three threads run concurrently in live mode:
