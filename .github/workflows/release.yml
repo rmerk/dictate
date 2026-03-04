@@ -28,14 +28,32 @@ jobs:
         run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 
       - name: Package
+        id: package
         run: |
-          cd build
-          cpack -G TGZ
+          bash scripts/package.sh
+          TARBALL=$(ls dist/*.tar.gz)
+          SHA256=$(shasum -a 256 "$TARBALL" | awk '{print $1}')
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "SHA256: $SHA256"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/rcli-*.tar.gz
+          files: dist/*.tar.gz
           generate_release_notes: true
+          body: |
+            ## Installation
+
+            ```bash
+            brew tap RunanywhereAI/rcli https://github.com/RunanywhereAI/RCLI.git
+            brew install rcli
+            rcli setup  # download AI models (~1GB, one-time)
+            ```
+
+            ### SHA256
+            ```
+            ${{ steps.package.outputs.sha256 }}
+            ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

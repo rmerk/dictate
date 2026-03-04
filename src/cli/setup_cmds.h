@@ -13,8 +13,8 @@ inline int cmd_setup(const Args& args) {
     if (args.help) {
         fprintf(stderr,
             "\n%s%s  rcli setup%s  —  Download AI models\n\n"
-            "  Downloads ~740MB of models to ~/Library/RCLI/models/:\n"
-            "    - Qwen3 0.6B LLM (456MB)\n"
+            "  Downloads ~1GB of models to ~/Library/RCLI/models/:\n"
+            "    - Liquid LFM2 1.2B Tool LLM (731MB)\n"
             "    - Zipformer streaming STT (~50MB)\n"
             "    - Whisper base.en offline STT (~140MB)\n"
             "    - Piper TTS voice (~60MB)\n"

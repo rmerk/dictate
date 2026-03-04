@@ -33,6 +33,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     endif()
 endif()
 
+# --- Install rpath (must be set before defining targets) ---
+set(CMAKE_INSTALL_RPATH "@executable_path/../lib")
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+set(CMAKE_INSTALL_RPATH_USE_LINK_RPATH FALSE)
+
 # --- llama.cpp ---
 set(GGML_METAL ON CACHE BOOL "Enable Metal GPU acceleration" FORCE)
 set(GGML_ACCELERATE ON CACHE BOOL "Enable Apple Accelerate framework" FORCE)
@@ -198,8 +203,11 @@ include(GNUInstallDirs)
 install(TARGETS rcli_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES src/api/rcli_api.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rcli)
 
-set(CMAKE_INSTALL_RPATH "@executable_path/../lib")
-set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+# Install shared libraries that rcli depends on (for CPack)
+install(DIRECTORY ${CMAKE_BINARY_DIR}/bin/ DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    FILES_MATCHING PATTERN "*.dylib")
+install(DIRECTORY ${CMAKE_BINARY_DIR}/lib/ DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    FILES_MATCHING PATTERN "*.dylib")
 
 # =============================================================================
 # CPack (produces rcli-0.1.0-Darwin.tar.gz)

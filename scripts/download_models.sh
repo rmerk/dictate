@@ -20,14 +20,14 @@ echo "╚═══════════════════════�
 echo "Target: $MODELS_DIR"
 echo ""
 
-# --- LLM: Qwen3 0.6B Q4_K_M ---
-LLM_FILE="$MODELS_DIR/qwen3-0.6b-q4_k_m.gguf"
+# --- LLM: Liquid LFM2 1.2B Tool Q4_K_M ---
+LLM_FILE="$MODELS_DIR/lfm2-1.2b-tool-q4_k_m.gguf"
 if [ -f "$LLM_FILE" ]; then
     echo "✓ LLM model already exists"
 else
-    echo "⬇ Downloading Qwen3 0.6B Q4_K_M (~400MB)..."
+    echo "⬇ Downloading Liquid LFM2 1.2B Tool Q4_K_M (~731MB)..."
     curl -L -o "$LLM_FILE" \
-        "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf?download=true"
+        "https://huggingface.co/LiquidAI/LFM2-1.2B-Tool-GGUF/resolve/main/LFM2-1.2B-Tool-Q4_K_M.gguf"
     echo "✓ LLM model downloaded"
 fi
 

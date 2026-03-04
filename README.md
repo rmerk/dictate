@@ -13,8 +13,9 @@ A high-performance, low-latency voice AI system for Apple Silicon. Speak command
 ## Install (Homebrew)
 
 ```bash
-brew tap RunanywhereAI/tap && brew install rcli
-rcli setup        # downloads ~700MB of AI models (one-time)
+brew tap RunanywhereAI/rcli https://github.com/RunanywhereAI/RCLI.git
+brew install rcli
+rcli setup        # downloads ~1GB of AI models (one-time)
 ```
 
 ## Quick Start
@@ -48,9 +49,9 @@ rcli bench                              # benchmark all modalities
   ┌─────────┐   ┌────────┤  ┌─────┐   ┌─────┐   ┌─────┐   ┌─────┐        │   ┌──────────┐
   │   Mic   │──▶│ VAD    │─▶│ STT │──▶│ RAG │──▶│ LLM │──▶│ TTS │────────│──▶│ Speaker  │
   └─────────┘   └────────┤  └─────┘   └─────┘   └─────┘   └─────┘        │   └──────────┘
-                          │  Zipformer  Hybrid    Qwen3     Piper          │
-                          │  (37ms)    Retrieval  0.6B     (150ms)         │
-                          │             (4ms)    (160t/s)                   │
+                          │  Zipformer  Hybrid    LFM2      Piper          │
+                          │  (37ms)    Retrieval  1.2B     (150ms)         │
+                          │             (4ms)    (180t/s)                   │
                           └──────────────────────────────────────────────────┘
                                                       ↓
                                               Tool Calling → 43 macOS Actions
@@ -63,7 +64,7 @@ rcli bench                              # benchmark all modalities
 | **VAD** | Silero VAD | silero_vad.onnx (629 KB) | Speech/silence detection |
 | **STT** | Sherpa-ONNX | Zipformer (streaming) / Whisper (offline) | Speech-to-Text |
 | **RAG** | Custom C++ | Snowflake Arctic Embed S (34 MB) | Knowledge retrieval |
-| **LLM** | llama.cpp | Qwen3 0.6B Q4_K_M (456 MB) | Response generation |
+| **LLM** | llama.cpp | Liquid LFM2 1.2B Tool Q4_K_M (731 MB) | Response generation + tool calling |
 | **TTS** | Sherpa-ONNX/Piper | en_US-amy-medium | Text-to-Speech |
 | **Tools** | Hybrid engine | 43 macOS actions | Function calling |
 
@@ -75,9 +76,6 @@ rcli bench                              # benchmark all modalities
 RCLI/
 ├── CMakeLists.txt              Build configuration
 ├── deps/                       llama.cpp + sherpa-onnx (cloned by setup.sh)
-├── scripts/
-│   ├── setup.sh                Clone dependencies
-│   └── download_models.sh      Download AI models
 ├── src/
 │   ├── engines/                ML engine wrappers (STT, LLM, TTS, VAD, embedding)
 │   ├── pipeline/               Orchestrator, sentence detector, text sanitizer
@@ -90,9 +88,12 @@ RCLI/
 │   ├── api/                    C API (rcli_api.h) — public engine interface
 │   ├── cli/                    TUI dashboard (FTXUI), CLI commands
 │   └── models/                 Model registries (LLM, TTS, STT)
-├── swift/                      macOS SwiftUI app bridge
-├── homebrew/                   Homebrew formula + cask
-└── .github/workflows/          CI/CD
+├── Formula/                    Homebrew formula (self-hosted tap)
+├── scripts/
+│   ├── setup.sh                Clone dependencies
+│   ├── download_models.sh      Download AI models
+│   └── package.sh              Package binary + dylibs for distribution
+└── .github/workflows/          CI/CD (release builds + GitHub Releases)
 ```
 
 ---
@@ -130,7 +131,7 @@ rcli bench [suite]            Run benchmarks (stt, llm, tts, e2e, rag, all)
 rcli models                   Manage all AI models (LLM, STT, TTS)
 rcli upgrade-llm              Upgrade to larger LLM
 rcli cleanup                  Remove unused models
-rcli setup                    Download AI models (~700MB)
+rcli setup                    Download AI models (~1GB)
 rcli info                     Show engine info
 
 Options:
@@ -179,9 +180,9 @@ Options:
 
 | Model | Size | Purpose |
 |-------|------|---------|
-| Qwen3 0.6B Q4_K_M | 456 MB | Default LLM |
+| Liquid LFM2 1.2B Tool | 731 MB | Default LLM (tool-calling optimized) |
+| Qwen3 0.6B Q4_K_M | 456 MB | Lightweight alternate LLM |
 | Qwen3.5 0.8B / 2B / 4B | 600MB–2.7GB | Upgrade LLMs |
-| Liquid LFM2 1.2B | 731 MB | Tool-calling optimized LLM |
 | Snowflake Arctic Embed S | 34 MB | Text embeddings (RAG) |
 | Zipformer | ~50 MB | Streaming STT |
 | Whisper Base EN | ~140 MB | Offline STT |
