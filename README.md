@@ -45,27 +45,20 @@
 ## Install
 
 ```bash
-brew tap RunanywhereAI/rcli https://github.com/RunanywhereAI/RCLI.git
-brew install rcli
-rcli setup     # downloads default models (~1GB, one-time)
+curl -fsSL https://raw.githubusercontent.com/RunanywhereAI/RCLI/main/install.sh | bash
 ```
+
+That's it. The script installs Homebrew (if needed), downloads RCLI, and fetches the default AI models (~1GB).
 
 Requires macOS 13+ on Apple Silicon (M1 or later).
 
 <details>
-<summary><strong>macOS 26 beta</strong></summary>
-
-Homebrew's CLT check may fail on macOS 26 beta. Run `brew update` first, and if `brew install` still errors, install manually:
+<summary><strong>Manual install via Homebrew</strong></summary>
 
 ```bash
 brew tap RunanywhereAI/rcli https://github.com/RunanywhereAI/RCLI.git
-brew fetch rcli
-cd /tmp && tar xzf "$(brew --cache rcli)"
-CELLAR="/opt/homebrew/Cellar/rcli/0.1.3"
-mkdir -p "$CELLAR/bin" "$CELLAR/lib"
-cp rcli-*/bin/rcli "$CELLAR/bin/" && cp rcli-*/lib/*.dylib "$CELLAR/lib/"
-brew link --overwrite rcli
-rcli setup
+brew install rcli
+rcli setup     # downloads default models (~1GB, one-time)
 ```
 
 </details>
