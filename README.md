@@ -22,7 +22,7 @@
   <a href="https://huggingface.co/hexgrad/Kokoro-82M"><img src="https://img.shields.io/badge/Kokoro-TTS-orange" alt="Kokoro"></a>
 </p>
 
-A complete STT + LLM + TTS pipeline running on Apple Silicon with Metal GPU. 40 macOS actions via voice or text. Local RAG over your documents. Sub-200ms end-to-end latency. No cloud, no API keys.
+**RCLI** (RunAnywhere Command Line Interface) is a complete STT + LLM + TTS pipeline running on Apple Silicon with Metal GPU. 40 macOS actions via voice or text. Local RAG over your documents. Sub-200ms end-to-end latency. No cloud, no API keys.
 
 ## Table of Contents
 
