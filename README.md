@@ -22,7 +22,7 @@ A complete STT + LLM + TTS pipeline running on Apple Silicon with Metal GPU. 40 
 - [Install](#install)
 - [Quick Start](#quick-start)
 - [Features](#features)
-- [Models](#models)
+- [Supported Models](#supported-models)
 - [Benchmarks](#benchmarks)
 - [Architecture](#architecture)
 - [Build from Source](#build-from-source)
@@ -105,61 +105,53 @@ rcli ask --rag ~/Library/RCLI/index "summarize the project plan"
 
 A terminal dashboard built with [FTXUI](https://github.com/ArthurSonzogni/FTXUI) featuring push-to-talk voice input, live hardware monitoring (CPU, GPU, memory), real-time performance metrics, model management, and an actions browser.
 
-## Models
+## Supported Models
 
-RCLI downloads a default model set during `rcli setup` and provides CLI-based model management to download, switch, and remove models across all modalities.
+RCLI ships with a default model set (~1GB via `rcli setup`) and supports 20 models across 5 modalities. All models run locally on Apple Silicon with Metal GPU. Use `rcli models` to download, switch, or remove any model.
+
+### LLM
+
+| Model | Provider | Size | Speed | License | Features |
+|-------|----------|------|-------|---------|----------|
+| [LFM2 1.2B Tool](https://huggingface.co/LiquidAI/LFM2-1.2B-Tool-GGUF) | [Liquid AI](https://liquid.ai) | 731 MB | ~180 t/s | [LFM Open](https://liquid.ai/lfm-license) | tool calling, **default** |
+| [LFM2 350M](https://huggingface.co/LiquidAI/LFM2-350M-GGUF) | [Liquid AI](https://liquid.ai) | 219 MB | ~350 t/s | [LFM Open](https://liquid.ai/lfm-license) | fastest inference, 128K context |
+| [LFM2.5 1.2B Instruct](https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF) | [Liquid AI](https://liquid.ai) | 731 MB | ~180 t/s | [LFM Open](https://liquid.ai/lfm-license) | 128K context |
+| [LFM2 2.6B](https://huggingface.co/LiquidAI/LFM2-2.6B-GGUF) | [Liquid AI](https://liquid.ai) | 1.5 GB | ~120 t/s | [LFM Open](https://liquid.ai/lfm-license) | stronger conversational, 128K context |
+| [Qwen3 0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) | [Alibaba Qwen](https://github.com/QwenLM) | 456 MB | ~250 t/s | [Apache 2.0](https://github.com/QwenLM/Qwen3.5/blob/main/LICENSE) | ultra-fast, smallest footprint |
+| [Qwen3.5 0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) | [Alibaba Qwen](https://github.com/QwenLM) | 600 MB | ~220 t/s | [Apache 2.0](https://github.com/QwenLM/Qwen3.5/blob/main/LICENSE) | Qwen3.5 generation |
+| [Qwen3.5 2B](https://huggingface.co/Qwen/Qwen3.5-2B) | [Alibaba Qwen](https://github.com/QwenLM) | 1.2 GB | ~150 t/s | [Apache 2.0](https://github.com/QwenLM/Qwen3.5/blob/main/LICENSE) | good all-rounder |
+| [Qwen3 4B](https://huggingface.co/Qwen/Qwen3-4B) | [Alibaba Qwen](https://github.com/QwenLM) | 2.5 GB | ~80 t/s | [Apache 2.0](https://github.com/QwenLM/Qwen3.5/blob/main/LICENSE) | smart reasoning |
+| [Qwen3.5 4B](https://huggingface.co/Qwen/Qwen3.5-4B) | [Alibaba Qwen](https://github.com/QwenLM) | 2.7 GB | ~75 t/s | [Apache 2.0](https://github.com/QwenLM/Qwen3.5/blob/main/LICENSE) | best small model, 262K context |
+
+### TTS
+
+| Voice | Provider | Size | Speakers | License | Features |
+|-------|----------|------|----------|---------|----------|
+| [Piper Lessac](https://github.com/rhasspy/piper) | [Rhasspy](https://github.com/rhasspy/piper) | 60 MB | 1 | [MIT](https://github.com/rhasspy/piper/blob/master/LICENSE.md) | fast, clear English, **default** |
+| [Piper Amy](https://github.com/rhasspy/piper) | [Rhasspy](https://github.com/rhasspy/piper) | 60 MB | 1 | [MIT](https://github.com/rhasspy/piper/blob/master/LICENSE.md) | warm female voice |
+| [KittenTTS Nano](https://huggingface.co/KittenML/kitten-tts-nano-0.8) | [KittenML](https://github.com/KittenML/KittenTTS) | 90 MB | 8 | [Apache 2.0](https://github.com/KittenML/KittenTTS/blob/main/LICENSE) | 8 voices (4M/4F), lightweight |
+| [Matcha LJSpeech](https://github.com/shivammehta25/Matcha-TTS) | [Matcha-TTS](https://github.com/shivammehta25/Matcha-TTS) | 100 MB | 1 | [MIT](https://github.com/shivammehta25/Matcha-TTS/blob/main/LICENSE) | HiFi-GAN vocoder |
+| [Kokoro English v0.19](https://huggingface.co/hexgrad/Kokoro-82M) | [Hexgrad](https://huggingface.co/hexgrad) | 310 MB | 11 | [Apache 2.0](https://huggingface.co/hexgrad/Kokoro-82M) | best English quality |
+| [Kokoro Multi-lang v1.1](https://huggingface.co/hexgrad/Kokoro-82M) | [Hexgrad](https://huggingface.co/hexgrad) | 500 MB | 103 | [Apache 2.0](https://huggingface.co/hexgrad/Kokoro-82M) | 103 speakers, Chinese + English |
+
+### STT
+
+| Model | Provider | Size | Accuracy | License | Features |
+|-------|----------|------|----------|---------|----------|
+| [Zipformer](https://github.com/k2-fsa/sherpa-onnx) | [k2-fsa](https://github.com/k2-fsa/sherpa-onnx) | 50 MB | Good | [Apache 2.0](https://github.com/k2-fsa/sherpa-onnx/blob/master/LICENSE) | streaming (live mic), **default** |
+| [Whisper base.en](https://github.com/openai/whisper) | [OpenAI](https://github.com/openai/whisper) | 140 MB | ~5% WER | [MIT](https://github.com/openai/whisper/blob/main/LICENSE) | offline, English, **default** |
+| [Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | [NVIDIA](https://huggingface.co/nvidia) | 640 MB | ~1.9% WER | [CC-BY-4.0](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | 25 languages, auto-punctuation |
+
+### VAD and Embeddings
+
+| Model | Provider | Modality | Size | License |
+|-------|----------|----------|------|---------|
+| [Silero VAD](https://github.com/snakers4/silero-vad) | [Silero](https://github.com/snakers4/silero-vad) | Voice Activity Detection | 0.6 MB | [MIT](https://github.com/snakers4/silero-vad/blob/master/LICENSE) |
+| [Snowflake Arctic Embed S](https://github.com/Snowflake-Labs/arctic-embed) | [Snowflake](https://github.com/Snowflake-Labs/arctic-embed) | Text Embeddings (RAG) | 34 MB | [Apache 2.0](https://github.com/Snowflake-Labs/arctic-embed/blob/main/LICENSE) |
 
 ### Defaults (installed by `rcli setup`)
 
-| Component | Model | Size |
-|-----------|-------|------|
-| LLM | Liquid LFM2 1.2B Tool (Q4_K_M) | 731 MB |
-| STT | Zipformer streaming + Whisper base.en | ~190 MB |
-| TTS | Piper Lessac (English) | ~60 MB |
-| VAD | Silero VAD | 0.6 MB |
-| Embeddings | Snowflake Arctic Embed S (Q8_0) | 34 MB |
-
-<details>
-<summary><strong>All available LLMs</strong></summary>
-
-| Model | Size | Speed | Tool Calling | Notes |
-|-------|------|-------|-------------|-------|
-| Liquid LFM2 1.2B Tool | 731 MB | ~180 t/s | Excellent | **Default** — purpose-built for tool calling |
-| Qwen3 0.6B | 456 MB | ~250 t/s | Basic | Ultra-fast, smallest footprint |
-| Qwen3.5 0.8B | 600 MB | ~220 t/s | Basic | Qwen3.5 generation |
-| Liquid LFM2 350M | 219 MB | ~350 t/s | Basic | Fastest inference, 128K context |
-| Liquid LFM2.5 1.2B Instruct | 731 MB | ~180 t/s | Good | 128K context |
-| Liquid LFM2 2.6B | 1.5 GB | ~120 t/s | Good | Stronger conversational |
-| Qwen3.5 2B | 1.2 GB | ~150 t/s | Good | Good all-rounder |
-| Qwen3 4B | 2.5 GB | ~80 t/s | Good | Smart reasoning |
-| Qwen3.5 4B | 2.7 GB | ~75 t/s | Excellent | Best small model, 262K context |
-
-</details>
-
-<details>
-<summary><strong>All available TTS voices</strong></summary>
-
-| Voice | Architecture | Speakers | Quality | Size |
-|-------|-------------|----------|---------|------|
-| Piper Lessac | VITS | 1 | Good | 60 MB |
-| Piper Amy | VITS | 1 | Good | 60 MB |
-| KittenTTS Nano | Kitten | 8 | Great | 90 MB |
-| Matcha LJSpeech | Matcha | 1 | Great | 100 MB |
-| Kokoro English v0.19 | Kokoro | 11 | Excellent | 310 MB |
-| Kokoro Multi-lang v1.1 | Kokoro | 103 | Excellent | 500 MB |
-
-</details>
-
-<details>
-<summary><strong>All available STT models</strong></summary>
-
-| Model | Category | Accuracy | Size |
-|-------|----------|----------|------|
-| Zipformer | Streaming (live mic) | Good | 50 MB |
-| Whisper base.en | Offline | ~5% WER | 140 MB |
-| Parakeet TDT 0.6B v3 | Offline | ~1.9% WER | 640 MB |
-
-</details>
+`rcli setup` downloads ~1GB: LFM2 1.2B Tool (LLM), Zipformer + Whisper base.en (STT), Piper Lessac (TTS), Silero (VAD), and Snowflake Arctic Embed S (embeddings).
 
 ### Model Commands
 
@@ -307,4 +299,6 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for build inst
 
 MIT License. See [LICENSE](LICENSE) for details.
 
-Built by [RunAnywhere AI](https://github.com/RunanywhereAI).
+<p align="center">
+  Powered by <a href="https://github.com/RunanywhereAI">RunAnywhere, Inc.</a>
+</p>
