@@ -1822,7 +1822,7 @@ private:
 
     void add_response(const std::string& text, const std::string& perf) {
         std::lock_guard<std::mutex> lock(chat_mu_);
-        chat_history_.push_back({"RA:", text, perf, false});
+        chat_history_.push_back({"RCLI:", text, perf, false});
         trim_history();
     }
 

@@ -526,7 +526,7 @@ static int cmd_listen(const Args& args) {
     if (!models_exist(args.models_dir)) { print_missing_models(args.models_dir); return 1; }
 
     fprintf(stderr, "\n%s%s  RCLI — Continuous Voice Mode%s\n", color::bold, color::orange, color::reset);
-    fprintf(stderr, "  Speak naturally. RA listens, acts, and responds.\n");
+    fprintf(stderr, "  Speak naturally. RCLI listens, acts, and responds.\n");
     fprintf(stderr, "  Press Ctrl+C to stop.\n\n");
 
     g_engine = rcli_create(nullptr);
