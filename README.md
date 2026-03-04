@@ -61,7 +61,7 @@ Homebrew's CLT check may fail on macOS 26 beta. Run `brew update` first, and if 
 brew tap RunanywhereAI/rcli https://github.com/RunanywhereAI/RCLI.git
 brew fetch rcli
 cd /tmp && tar xzf "$(brew --cache rcli)"
-CELLAR="/opt/homebrew/Cellar/rcli/0.1.2"
+CELLAR="/opt/homebrew/Cellar/rcli/0.1.3"
 mkdir -p "$CELLAR/bin" "$CELLAR/lib"
 cp rcli-*/bin/rcli "$CELLAR/bin/" && cp rcli-*/lib/*.dylib "$CELLAR/lib/"
 brew link --overwrite rcli
