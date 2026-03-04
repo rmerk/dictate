@@ -15,10 +15,21 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT"></a>
 </p>
 
+<p align="center">
+  <a href="https://liquid.ai"><img src="https://img.shields.io/badge/Liquid_AI-LFM2-8A2BE2" alt="Liquid AI"></a>
+  <a href="https://github.com/QwenLM"><img src="https://img.shields.io/badge/Qwen-3.5-blue" alt="Qwen"></a>
+  <a href="https://github.com/openai/whisper"><img src="https://img.shields.io/badge/OpenAI-Whisper-412991" alt="Whisper"></a>
+  <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3"><img src="https://img.shields.io/badge/NVIDIA-Parakeet-76B900" alt="Parakeet"></a>
+  <a href="https://github.com/rhasspy/piper"><img src="https://img.shields.io/badge/Piper-TTS-green" alt="Piper"></a>
+  <a href="https://github.com/KittenML/KittenTTS"><img src="https://img.shields.io/badge/KittenML-TTS-FF69B4" alt="KittenTTS"></a>
+  <a href="https://huggingface.co/hexgrad/Kokoro-82M"><img src="https://img.shields.io/badge/Kokoro-TTS-orange" alt="Kokoro"></a>
+</p>
+
 A complete STT + LLM + TTS pipeline running on Apple Silicon with Metal GPU. 40 macOS actions via voice or text. Local RAG over your documents. Sub-200ms end-to-end latency. No cloud, no API keys.
 
 ## Table of Contents
 
+- [Demo](#demo)
 - [Install](#install)
 - [Quick Start](#quick-start)
 - [Features](#features)
@@ -27,7 +38,15 @@ A complete STT + LLM + TTS pipeline running on Apple Silicon with Metal GPU. 40 
 - [Architecture](#architecture)
 - [Build from Source](#build-from-source)
 - [Contributing](#contributing)
+- [Acknowledgments](#acknowledgments)
 - [License](#license)
+
+## Demo
+
+<!-- TODO: Add a short (~60s) demo video showing interactive TUI, voice commands, and RAG in action. -->
+<!-- Recommended: Record with asciinema or screen capture, upload to YouTube/GitHub, embed here. -->
+
+> **Coming soon** — a walkthrough video showing voice commands, RAG queries, and the interactive TUI.
 
 ## Install
 
@@ -294,6 +313,24 @@ Options:
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, architecture overview, and how to add new actions, models, or voices.
+
+## Acknowledgments
+
+RCLI builds on excellent open-source work:
+
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) by Georgi Gerganov — LLM inference engine with Metal GPU support
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) by k2-fsa — STT, TTS, and VAD via ONNX Runtime
+- [USearch](https://github.com/unum-cloud/usearch) by Unum Cloud — HNSW vector index powering RAG retrieval
+- [FTXUI](https://github.com/ArthurSonzogni/FTXUI) by Arthur Sonzogni — terminal UI framework
+- [Liquid AI](https://liquid.ai) — LFM2 language models
+- [Alibaba Qwen](https://github.com/QwenLM) — Qwen3/3.5 language models
+- [OpenAI](https://github.com/openai/whisper) — Whisper speech recognition
+- [NVIDIA](https://huggingface.co/nvidia) — Parakeet TDT speech recognition
+- [Rhasspy](https://github.com/rhasspy/piper) — Piper TTS voices
+- [KittenML](https://github.com/KittenML/KittenTTS) — KittenTTS voices
+- [Hexgrad](https://huggingface.co/hexgrad) — Kokoro TTS voices
+- [Silero](https://github.com/snakers4/silero-vad) — voice activity detection
+- [Snowflake](https://github.com/Snowflake-Labs/arctic-embed) — Arctic Embed text embeddings
 
 ## License
 
