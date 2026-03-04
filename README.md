@@ -1,19 +1,16 @@
 <p align="center">
   <img src="assets/terminal.png" alt="RCLI" width="700" />
-</p>
-
-<h2 align="center"><a href="https://github.com/RunanywhereAI/runanywhere-sdks"><img src="https://img.shields.io/badge/RunAnywhere_Command_Line_Interface-FF4500?style=for-the-badge&labelColor=1a1a2e" alt="RunAnywhere Command Line Interface"></a></h2>
-<h3 align="center">Talk to your Mac, query your docs, no cloud required.</h3>
-
-<p align="center">
+  <br><br>
+  <a href="https://github.com/RunanywhereAI/runanywhere-sdks"><img src="https://img.shields.io/badge/RunAnywhere_Command_Line_Interface-FF4500?style=for-the-badge&labelColor=1a1a2e" alt="RunAnywhere Command Line Interface"></a>
+  <br>
+  <strong>Talk to your Mac, query your docs, no cloud required.</strong>
+  <br><br>
   <a href="https://github.com/RunanywhereAI/RCLI"><img src="https://img.shields.io/badge/platform-macOS-blue" alt="macOS"></a>
   <a href="https://github.com/RunanywhereAI/RCLI"><img src="https://img.shields.io/badge/chip-Apple_Silicon-black" alt="Apple Silicon"></a>
   <a href="https://github.com/RunanywhereAI/RCLI"><img src="https://img.shields.io/badge/language-C++17-orange" alt="C++17"></a>
   <a href="https://github.com/RunanywhereAI/RCLI"><img src="https://img.shields.io/badge/inference-100%25_local-green" alt="Local"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT"></a>
-</p>
-
-<p align="center">
+  <br>
   <a href="https://liquid.ai"><img src="https://img.shields.io/badge/Liquid_AI-LFM2-8A2BE2" alt="Liquid AI"></a>
   <a href="https://github.com/QwenLM"><img src="https://img.shields.io/badge/Qwen-3.5-blue" alt="Qwen"></a>
   <a href="https://github.com/openai/whisper"><img src="https://img.shields.io/badge/OpenAI-Whisper-412991" alt="Whisper"></a>
