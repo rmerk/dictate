@@ -38,7 +38,6 @@ A complete STT + LLM + TTS pipeline running on Apple Silicon with Metal GPU. 40 
 - [Architecture](#architecture)
 - [Build from Source](#build-from-source)
 - [Contributing](#contributing)
-- [Acknowledgments](#acknowledgments)
 - [License](#license)
 
 ## Demo
@@ -313,24 +312,6 @@ Options:
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, architecture overview, and how to add new actions, models, or voices.
-
-## Acknowledgments
-
-RCLI builds on excellent open-source work:
-
-- [llama.cpp](https://github.com/ggml-org/llama.cpp) by Georgi Gerganov — LLM inference engine with Metal GPU support
-- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) by k2-fsa — STT, TTS, and VAD via ONNX Runtime
-- [USearch](https://github.com/unum-cloud/usearch) by Unum Cloud — HNSW vector index powering RAG retrieval
-- [FTXUI](https://github.com/ArthurSonzogni/FTXUI) by Arthur Sonzogni — terminal UI framework
-- [Liquid AI](https://liquid.ai) — LFM2 language models
-- [Alibaba Qwen](https://github.com/QwenLM) — Qwen3/3.5 language models
-- [OpenAI](https://github.com/openai/whisper) — Whisper speech recognition
-- [NVIDIA](https://huggingface.co/nvidia) — Parakeet TDT speech recognition
-- [Rhasspy](https://github.com/rhasspy/piper) — Piper TTS voices
-- [KittenML](https://github.com/KittenML/KittenTTS) — KittenTTS voices
-- [Hexgrad](https://huggingface.co/hexgrad) — Kokoro TTS voices
-- [Silero](https://github.com/snakers4/silero-vad) — voice activity detection
-- [Snowflake](https://github.com/Snowflake-Labs/arctic-embed) — Arctic Embed text embeddings
 
 ## License
 
