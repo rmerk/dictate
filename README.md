@@ -45,7 +45,24 @@ rcli setup     # downloads default models (~1GB, one-time)
 
 Requires macOS 13+ on Apple Silicon (M1 or later).
 
-> **macOS 26 beta:** Homebrew's CLT version check does not yet recognize macOS 26. If `brew install` fails with a Command Line Tools error, install manually from the [latest release](https://github.com/RunanywhereAI/RCLI/releases/latest) tarball or [build from source](#build-from-source).
+<details>
+<summary><strong>macOS 26 beta:</strong> If <code>brew install</code> fails with a Command Line Tools error, use this manual install instead.</summary>
+
+```bash
+brew tap RunanywhereAI/rcli https://github.com/RunanywhereAI/RCLI.git
+cd /tmp && rm -rf rcli-install && mkdir rcli-install && cd rcli-install
+curl -fsSL -o rcli.tar.gz "https://github.com/RunanywhereAI/RCLI/releases/download/v0.1.2/rcli-0.1.2-Darwin-arm64.tar.gz"
+tar xzf rcli.tar.gz
+CELLAR="/opt/homebrew/Cellar/rcli/0.1.2"
+rm -rf "$CELLAR"
+mkdir -p "$CELLAR/bin" "$CELLAR/lib"
+cp rcli-0.1.2-Darwin-arm64/bin/rcli "$CELLAR/bin/"
+cp rcli-0.1.2-Darwin-arm64/lib/*.dylib "$CELLAR/lib/"
+brew link --overwrite rcli
+rcli setup     # downloads default models (~1GB, one-time)
+```
+
+</details>
 
 ## Quick Start
 
