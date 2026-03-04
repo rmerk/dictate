@@ -8,7 +8,8 @@ deps/llama.cpp/
 deps/sherpa-onnx/
 
 # Models (large binary files, download via scripts/download_models.sh)
-models/
+# Use /models/ (root-level only) to avoid ignoring src/models/ headers
+/models/
 *.gguf
 *.onnx
 
