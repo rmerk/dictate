@@ -41,8 +41,7 @@ void register_web_actions(ActionRegistry& registry) {
     registry.register_action(
         {"search_web", "Search the web using Google (or DuckDuckGo/Bing)",
          "{\"query\": \"search query\", \"engine\": \"optional: google|duckduckgo|bing\"}",
-         {"search", "google", "search the web", "search for", "look up", "search google", "web search",
-          "google search", "find online", "search online", "look it up", "search web"},
+         true,
          "web",
          "Google how to make sourdough bread",
          "rcli action search_web '{\"query\": \"how to make sourdough bread\"}'"},
@@ -51,8 +50,7 @@ void register_web_actions(ActionRegistry& registry) {
     registry.register_action(
         {"search_youtube", "Search YouTube for videos",
          "{\"query\": \"search query\"}",
-         {"youtube", "search youtube", "watch video", "find video", "play video",
-          "on youtube", "youtube video", "open youtube", "video of", "find on youtube"},
+         true,
          "web",
          "Search YouTube for guitar tutorials",
          "rcli action search_youtube '{\"query\": \"guitar tutorials\"}'"},

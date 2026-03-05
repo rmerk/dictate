@@ -382,17 +382,30 @@ std::string ModelProfile::build_tool_system_prompt(
     std::string prompt = base_system_prompt;
     if (tool_defs_json.empty()) return prompt;
 
-    prompt += "\n\n# Tools\n\nYou have these tools:\n" + tool_defs_json + "\n\n";
-
     if (family == ModelFamily::LFM2) {
-        prompt += "To use a tool, call it like: function_name(param=\"value\")\n";
+        prompt += "\n\nYou have access to the following tools:\n" + tool_defs_json + "\n\n"
+                  "When the user asks you to perform an action, call the appropriate tool.\n"
+                  "Respond with ONLY the tool call in this exact format:\n"
+                  "<|tool_call_start|>function_name(param=\"value\", param2=\"value2\")<|tool_call_end|>\n"
+                  "Do not add any other text before or after the tool call.\n"
+                  "If no tool is needed, respond conversationally.\n";
+    } else if (family == ModelFamily::QWEN3) {
+        prompt += "\n\n# Tools\n\n"
+                  "You may call one or more tools to assist. Use this format:\n\n"
+                  "<tool_call>\n"
+                  "{\"name\": \"tool_name\", \"arguments\": {\"param\": \"value\"}}\n"
+                  "</tool_call>\n\n"
+                  "Available tools:\n" + tool_defs_json + "\n\n"
+                  "If the user asks you to perform an action, you MUST call the appropriate tool.\n"
+                  "If no tool is needed, respond normally.\n";
     } else {
-        prompt += "To use a tool, respond EXACTLY like this example:\n"
+        prompt += "\n\n# Tools\n\nYou have these tools:\n" + tool_defs_json + "\n\n"
+                  "To use a tool, respond EXACTLY like this example:\n"
                   + tool_call_start + "\n{\"name\": \"tool_name\", \"arguments\": {\"key\": \"value\"}}\n"
-                  + tool_call_end + "\n";
+                  + tool_call_end + "\n"
+                  "Only call a tool when the user asks you to perform an action. "
+                  "Output ONLY the tool call, nothing else.\n";
     }
-    prompt += "Only call a tool when the user asks you to perform an action. "
-              "Output ONLY the tool call, nothing else.\n";
     return prompt;
 }
 
@@ -507,23 +520,30 @@ static bool parse_json_tool_call(const std::string& content, ToolCall& call) {
 std::vector<ToolCall> ModelProfile::parse_tool_calls(const std::string& llm_output) const {
     std::vector<ToolCall> calls;
 
+    // Helper: extract content between start/end tags.
+    // If end tag is missing (common when llama.cpp consumes it as EOS), use rest of string.
+    auto extract_between = [](const std::string& text, const std::string& start,
+                              const std::string& end, size_t& pos) -> std::string {
+        size_t cs = pos + start.length();
+        size_t ce = end.empty() ? std::string::npos : text.find(end, cs);
+        if (ce == std::string::npos) {
+            pos = text.length();
+            return text.substr(cs);
+        }
+        pos = ce + end.length();
+        return text.substr(cs, ce - cs);
+    };
+
     // Try the model's native tool-call tags first
-    if (!tool_call_start.empty() && !tool_call_end.empty()) {
+    if (!tool_call_start.empty()) {
         size_t pos = 0;
         while ((pos = llm_output.find(tool_call_start, pos)) != std::string::npos) {
-            size_t content_start = pos + tool_call_start.length();
-            size_t content_end = llm_output.find(tool_call_end, content_start);
-            if (content_end == std::string::npos) break;
-
-            std::string content = llm_output.substr(content_start, content_end - content_start);
+            std::string content = extract_between(llm_output, tool_call_start, tool_call_end, pos);
             ToolCall call;
-
             bool ok = tool_call_json_format
                 ? parse_json_tool_call(content, call)
                 : parse_lfm2_tool_call(content, call);
-
             if (ok) calls.push_back(std::move(call));
-            pos = content_end + tool_call_end.length();
         }
         if (!calls.empty()) return calls;
     }
@@ -534,13 +554,10 @@ std::vector<ToolCall> ModelProfile::parse_tool_calls(const std::string& llm_outp
         std::string s1 = "<|tool_call_start|>", e1 = "<|tool_call_end|>";
         size_t pos = 0;
         while ((pos = llm_output.find(s1, pos)) != std::string::npos) {
-            size_t cs = pos + s1.length();
-            size_t ce = llm_output.find(e1, cs);
-            if (ce == std::string::npos) break;
+            std::string content = extract_between(llm_output, s1, e1, pos);
             ToolCall call;
-            if (parse_lfm2_tool_call(llm_output.substr(cs, ce - cs), call))
+            if (parse_lfm2_tool_call(content, call))
                 calls.push_back(std::move(call));
-            pos = ce + e1.length();
         }
         if (!calls.empty()) return calls;
     }
@@ -550,13 +567,10 @@ std::vector<ToolCall> ModelProfile::parse_tool_calls(const std::string& llm_outp
         std::string s2 = "<tool_call>", e2 = "</tool_call>";
         size_t pos = 0;
         while ((pos = llm_output.find(s2, pos)) != std::string::npos) {
-            size_t cs = pos + s2.length();
-            size_t ce = llm_output.find(e2, cs);
-            if (ce == std::string::npos) break;
+            std::string content = extract_between(llm_output, s2, e2, pos);
             ToolCall call;
-            if (parse_json_tool_call(llm_output.substr(cs, ce - cs), call))
+            if (parse_json_tool_call(content, call))
                 calls.push_back(std::move(call));
-            pos = ce + e2.length();
         }
     }
 

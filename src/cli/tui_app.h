@@ -238,6 +238,7 @@ public:
                 if (event == Event::ArrowUp) { actions_cursor_up(); return true; }
                 if (event == Event::ArrowDown) { actions_cursor_down(); return true; }
                 if (event == Event::Return) { actions_execute_selected(); return true; }
+                if (event == Event::Character(' ')) { actions_toggle_selected(); return true; }
                 return true;
             }
             if (bench_mode_) {
@@ -1048,14 +1049,34 @@ private:
         if (e.is_header) return;
 
         if (e.installed) {
-            if (e.modality == "LLM") rcli::write_selected_model_id(e.id);
-            else if (e.modality == "STT") rcli::write_selected_stt_id(e.id);
-            else if (e.modality == "TTS") rcli::write_selected_tts_id(e.id);
-            for (auto& m : models_entries_) {
-                if (m.modality == e.modality && !m.is_header) m.is_active = (m.id == e.id);
+            if (e.modality == "LLM") {
+                models_message_ = "Switching to " + e.name + "...";
+                models_msg_color_ = theme_.warning;
+                std::string id = e.id, nm = e.name;
+                int idx = models_cursor_;
+                std::thread([this, id, nm]() {
+                    int rc = rcli_switch_llm(engine_, id.c_str());
+                    if (rc == 0) {
+                        for (auto& m : models_entries_) {
+                            if (m.modality == "LLM" && !m.is_header) m.is_active = (m.id == id);
+                        }
+                        models_message_ = "Switched to " + nm;
+                        models_msg_color_ = theme_.success;
+                    } else {
+                        models_message_ = "Failed to switch to " + nm;
+                        models_msg_color_ = theme_.error;
+                    }
+                    screen_->Post(Event::Custom);
+                }).detach();
+            } else {
+                if (e.modality == "STT") rcli::write_selected_stt_id(e.id);
+                else if (e.modality == "TTS") rcli::write_selected_tts_id(e.id);
+                for (auto& m : models_entries_) {
+                    if (m.modality == e.modality && !m.is_header) m.is_active = (m.id == e.id);
+                }
+                models_message_ = "Selected: " + e.name + ". Restart RCLI to apply.";
+                models_msg_color_ = theme_.success;
             }
-            models_message_ = "Selected: " + e.name + ". Restart RCLI to apply.";
-            models_msg_color_ = theme_.success;
         } else {
             if (e.url.empty()) {
                 models_message_ = "No download URL for " + e.name + ". Use 'rcli setup' first.";
@@ -1091,11 +1112,21 @@ private:
                     for (auto& m : models_entries_) {
                         if (m.modality == mod && !m.is_header && m.id != id) m.is_active = false;
                     }
-                    if (mod == "LLM") rcli::write_selected_model_id(id);
-                    else if (mod == "STT") rcli::write_selected_stt_id(id);
-                    else if (mod == "TTS") rcli::write_selected_tts_id(id);
-                    models_message_ = "Downloaded & selected: " + nm + ". Restart RCLI to apply.";
-                    models_msg_color_ = theme_.success;
+                    if (mod == "LLM") {
+                        if (rcli_switch_llm(engine_, id.c_str()) == 0) {
+                            models_message_ = "Downloaded & switched to " + nm;
+                            models_msg_color_ = theme_.success;
+                        } else {
+                            rcli::write_selected_model_id(id);
+                            models_message_ = "Downloaded " + nm + ". Restart RCLI to apply.";
+                            models_msg_color_ = theme_.warning;
+                        }
+                    } else {
+                        if (mod == "STT") rcli::write_selected_stt_id(id);
+                        else if (mod == "TTS") rcli::write_selected_tts_id(id);
+                        models_message_ = "Downloaded & selected: " + nm + ". Restart RCLI to apply.";
+                        models_msg_color_ = theme_.success;
+                    }
                 } else {
                     models_message_ = "Download failed for " + nm + ". Check connection.";
                     models_msg_color_ = theme_.error;
@@ -1176,6 +1207,7 @@ private:
             ActionEntry e;
             e.name = d.name; e.description = d.description;
             e.category = d.category; e.params_json = d.parameters_json;
+            e.enabled = rcli_is_action_enabled(engine_, d.name.c_str()) != 0;
             actions_entries_.push_back(e);
         }
 
@@ -1223,15 +1255,44 @@ private:
         }).detach();
     }
 
+    void actions_toggle_selected() {
+        if (actions_cursor_ < 0 || actions_cursor_ >= (int)actions_entries_.size()) return;
+        auto& e = actions_entries_[actions_cursor_];
+        if (e.is_header) return;
+        e.enabled = !e.enabled;
+        rcli_set_action_enabled(engine_, e.name.c_str(), e.enabled ? 1 : 0);
+        rcli_save_action_preferences(engine_);
+        int enabled_count = 0;
+        for (auto& entry : actions_entries_)
+            if (!entry.is_header && entry.enabled) enabled_count++;
+        if (enabled_count > 20) {
+            actions_message_ = "Warning: " + std::to_string(enabled_count) +
+                " actions enabled. More than 20 may reduce conversation quality.";
+            actions_msg_color_ = theme_.warning;
+        } else {
+            actions_message_ = e.name + (e.enabled ? " enabled" : " disabled") +
+                " for LLM (" + std::to_string(enabled_count) + " total)";
+            actions_msg_color_ = e.enabled ? theme_.success : theme_.text_muted;
+        }
+    }
+
     Element build_actions_panel_interactive() {
-        int action_count = (int)std::count_if(
-            actions_entries_.begin(), actions_entries_.end(),
-            [](const ActionEntry& e) { return !e.is_header; });
+        int action_count = 0, enabled_count = 0;
+        for (auto& e : actions_entries_) {
+            if (e.is_header) continue;
+            action_count++;
+            if (e.enabled) enabled_count++;
+        }
 
         Elements lines;
-        lines.push_back(text("  Actions (" + std::to_string(action_count) + ")") |
+        lines.push_back(text("  Actions (" + std::to_string(enabled_count) + "/" +
+            std::to_string(action_count) + " enabled for LLM)") |
             ftxui::bold | ftxui::color(theme_.accent));
-        lines.push_back(text("  Up/Down navigate, ENTER run, ESC close") | dim);
+        lines.push_back(text("  Up/Down navigate, SPACE toggle, ENTER run, ESC close") | dim);
+        if (enabled_count > 20) {
+            lines.push_back(text("  Warning: >20 actions enabled may reduce quality") |
+                ftxui::color(theme_.warning));
+        }
         lines.push_back(text(""));
 
         for (int i = 0; i < (int)actions_entries_.size(); i++) {
@@ -1242,15 +1303,17 @@ private:
                 continue;
             }
             bool sel = (i == actions_cursor_);
+            std::string check = e.enabled ? "[x] " : "[ ] ";
             std::string prefix = sel ? " > " : "   ";
-            std::string line = prefix + e.name;
+            std::string line = prefix + check + e.name;
             if (!e.description.empty()) {
                 std::string desc = e.description;
-                if (desc.size() > 60) desc = desc.substr(0, 57) + "...";
+                if (desc.size() > 50) desc = desc.substr(0, 47) + "...";
                 line += "  " + desc;
             }
             auto elem = text(line);
             if (sel) elem = elem | ftxui::bold | ftxui::color(theme_.text_selected) | focus;
+            else if (e.enabled) elem = elem | ftxui::color(theme_.success);
             else elem = elem | dim;
             lines.push_back(elem);
         }
@@ -1906,6 +1969,7 @@ private:
     struct ActionEntry {
         std::string name, description, category, params_json;
         bool is_header = false;
+        bool enabled = true;
     };
     bool actions_mode_ = false;
     int actions_cursor_ = 0;

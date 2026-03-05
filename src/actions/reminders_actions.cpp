@@ -33,8 +33,7 @@ void register_reminders_actions(ActionRegistry& registry) {
     registry.register_action(
         {"create_reminder", "Create a reminder in Apple Reminders",
          "{\"title\": \"reminder text\", \"due\": \"optional due date\", \"list\": \"optional list name\"}",
-         {"remind me to", "remind me", "set a reminder", "create reminder", "new reminder",
-          "don't forget", "add reminder", "create a reminder", "reminder to"},
+         true,
          "productivity",
          "Remind me to buy groceries tomorrow",
          "rcli action create_reminder '{\"title\": \"Buy groceries\"}'"},

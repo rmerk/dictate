@@ -52,6 +52,9 @@ public:
     // Initialize model
     bool init(const LlmConfig& config);
 
+    // Release all resources so init() can be called again
+    void shutdown();
+
     // Generate response with streaming callback
     // Returns full response text
     std::string generate(const std::string& prompt, TokenCallback on_token = nullptr);

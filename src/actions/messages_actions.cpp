@@ -72,8 +72,7 @@ void register_messages_actions(ActionRegistry& registry) {
     registry.register_action(
         {"send_message", "Send an iMessage or SMS via Messages.app",
          "{\"to\": \"contact name, phone number, or email\", \"text\": \"message content\"}",
-         {"send message", "text", "imessage", "send a text", "message to", "tell them",
-          "saying", "send text", "message", "sms"},
+         false,
          "communication",
          "Send a message to John saying I'll be 10 minutes late",
          "rcli action send_message '{\"to\": \"+1234567890\", \"text\": \"Running late!\"}'"},

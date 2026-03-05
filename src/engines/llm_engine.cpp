@@ -15,12 +15,26 @@ namespace rastack {
 LlmEngine::LlmEngine() = default;
 
 LlmEngine::~LlmEngine() {
+    shutdown();
+}
+
+void LlmEngine::shutdown() {
     if (sampler_) { llama_sampler_free(sampler_);  sampler_ = nullptr; }
     if (ctx_)     { llama_free(ctx_);              ctx_     = nullptr; }
     if (model_)   { llama_model_free(model_);      model_   = nullptr; }
+    vocab_                  = nullptr;
+    initialized_            = false;
+    has_cached_prompt_      = false;
+    cached_prompt_n_tokens_ = 0;
+    cached_system_prompt_.clear();
+    stats_   = LlmStats{};
+    profile_ = ModelProfile{};
+    LOG_DEBUG("LLM", "Shutdown complete");
 }
 
 bool LlmEngine::init(const LlmConfig& config) {
+    if (initialized_) shutdown();
+
     config_ = config;
 
     // Initialize backend (loads Metal, etc.)
@@ -221,17 +235,9 @@ std::string LlmEngine::generate_with_tools(
     const std::string& system_prompt,
     TokenCallback on_token)
 {
-    // Build tool-augmented system prompt using model profile
     std::string augmented_system = profile_.build_tool_system_prompt(system_prompt, tool_defs_json);
-
-    // Build full prompt with assistant pre-fill to force tool-call mode
     std::string prompt = profile_.build_chat_prompt(augmented_system, {}, user_message);
-
-    // Pre-fill with the model's native tool call start tag
-    prompt += profile_.tool_call_start + "\n";
-
-    std::string result = generate(prompt, on_token);
-    return profile_.tool_call_start + "\n" + result;
+    return generate(prompt, on_token);
 }
 
 std::string LlmEngine::build_chat_prompt(

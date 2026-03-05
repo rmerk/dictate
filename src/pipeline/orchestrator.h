@@ -89,6 +89,12 @@ public:
     ToolEngine& tools() { return tools_; }
     AudioIO&    audio() { return audio_; }
 
+    // Re-cache the system prompt after tool definitions change
+    void recache_system_prompt();
+
+    // Hot-swap the LLM model at runtime (pipeline must be IDLE)
+    bool reload_llm(const LlmConfig& new_config);
+
     // State
     PipelineState state() const { return state_.load(std::memory_order_relaxed); }
 

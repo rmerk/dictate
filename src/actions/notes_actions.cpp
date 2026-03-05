@@ -41,7 +41,7 @@ void register_notes_actions(ActionRegistry& registry) {
     registry.register_action(
         {"create_note", "Create a new note in Apple Notes",
          "{\"title\": \"note title\", \"body\": \"note content\", \"folder\": \"optional folder\"}",
-         {"note", "write a note", "create a note", "add a note", "jot down", "make a note"},
+         true,
          "productivity",
          "Create a note called Meeting Notes with today's discussion points",
          "rcli action create_note '{\"title\": \"Meeting\", \"body\": \"Discuss Q1 goals\"}'"},

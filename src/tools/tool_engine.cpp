@@ -289,40 +289,6 @@ std::vector<ToolResult> ToolEngine::execute_all(const std::vector<ToolCall>& cal
     return results;
 }
 
-void ToolEngine::register_tool_keywords(const std::string& name,
-                                         const std::vector<std::string>& keywords) {
-    tool_keywords_[name] = keywords;
-}
-
-bool ToolEngine::needs_tools(const std::string& user_query) const {
-    std::string q = user_query;
-    for (auto& c : q) c = std::tolower(static_cast<unsigned char>(c));
-
-    // Check all registered tool keywords (action-driven, not hardcoded)
-    for (auto& [name, keywords] : tool_keywords_) {
-        for (auto& kw : keywords) {
-            if (q.find(kw) != std::string::npos) return true;
-        }
-    }
-    // Fallback: check built-in tool keywords
-    return needs_tools_static(user_query);
-}
-
-bool ToolEngine::needs_tools_static(const std::string& user_query) {
-    std::string q = user_query;
-    for (auto& c : q) c = std::tolower(static_cast<unsigned char>(c));
-
-    static const char* keywords[] = {
-        "what time", "current time", "what's the time", "what day is",
-        "today's date", "weather", "forecast",
-        "calculate", "compute", "how much is",
-    };
-    for (auto& kw : keywords) {
-        if (q.find(kw) != std::string::npos) return true;
-    }
-    return false;
-}
-
 std::string ToolEngine::format_results(const std::vector<ToolResult>& results) const {
     std::string formatted;
     for (size_t i = 0; i < results.size(); i++) {

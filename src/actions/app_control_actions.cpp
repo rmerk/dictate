@@ -68,7 +68,7 @@ void register_app_control_actions(ActionRegistry& registry) {
     registry.register_action(
         {"open_app", "Launch a macOS application",
          "{\"app\": \"application name\"}",
-         {"open app", "launch app", "start app", "open", "launch", "start", "run app"},
+         true,
          "system",
          "Open Safari",
          "rcli action open_app '{\"app\": \"Safari\"}'"},
@@ -77,7 +77,7 @@ void register_app_control_actions(ActionRegistry& registry) {
     registry.register_action(
         {"open_url", "Open a URL in the default browser",
          "{\"url\": \"https://...\"}",
-         {"open url", "go to", "browse", "visit", "navigate to"},
+         true,
          "system",
          "Go to github.com",
          "rcli action open_url '{\"url\": \"https://github.com\"}'"},
@@ -86,8 +86,7 @@ void register_app_control_actions(ActionRegistry& registry) {
     registry.register_action(
         {"list_apps", "List currently running applications",
          "{}",
-         {"running apps", "what apps", "active apps", "what's open", "show apps", "list apps",
-          "which apps", "apps are running", "what's running", "what is running"},
+         false,
          "system",
          "What apps are running?",
          "rcli action list_apps '{}'"},
@@ -96,7 +95,7 @@ void register_app_control_actions(ActionRegistry& registry) {
     registry.register_action(
         {"quit_app", "Quit a macOS application",
          "{\"app\": \"application name\"}",
-         {"quit", "close app", "kill app", "exit app", "force quit", "quit app", "close"},
+         true,
          "system",
          "Quit Safari",
          "rcli action quit_app '{\"app\": \"Safari\"}'"},
@@ -105,7 +104,7 @@ void register_app_control_actions(ActionRegistry& registry) {
     registry.register_action(
         {"switch_app", "Switch to (activate) a macOS application",
          "{\"app\": \"application name\"}",
-         {"switch to", "go to app", "bring up", "activate", "focus on"},
+         false,
          "system",
          "Switch to Slack",
          "rcli action switch_app '{\"app\": \"Slack\"}'"},
@@ -114,8 +113,7 @@ void register_app_control_actions(ActionRegistry& registry) {
     registry.register_action(
         {"get_frontmost_app", "Get the name of the currently active application",
          "{}",
-         {"what app", "which app", "current app", "frontmost app", "active app", "what am i using",
-          "what application", "using right now"},
+         false,
          "system",
          "What app am I using?",
          "rcli action get_frontmost_app '{}'"},

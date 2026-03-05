@@ -19,7 +19,7 @@ void register_navigation_actions(ActionRegistry& registry) {
     registry.register_action(
         {"open_maps", "Search for a place or address in Apple Maps",
          "{\"query\": \"place or address to search\"}",
-         {"map", "maps", "find on map", "show on map", "where is", "look up location", "show me"},
+         false,
          "navigation",
          "Show me coffee shops nearby",
          "rcli action open_maps '{\"query\": \"coffee shops\"}'"},
