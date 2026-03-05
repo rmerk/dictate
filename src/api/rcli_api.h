@@ -224,6 +224,12 @@ void rcli_get_last_llm_perf(RCLIHandle handle,
                                   double* out_ttft_ms,
                                   double* out_total_ms);
 
+// Context window usage from last LLM call.
+// out_prompt_tokens: total tokens consumed by the last prompt (history + system + user).
+// out_ctx_size: model's configured context window size.
+// Both output pointers are optional (pass NULL to skip).
+void rcli_get_context_info(RCLIHandle handle, int* out_prompt_tokens, int* out_ctx_size);
+
 // TTS performance from last speak call.
 // Returns: samples generated, synthesis time (ms), real-time factor.
 void rcli_get_last_tts_perf(RCLIHandle handle,

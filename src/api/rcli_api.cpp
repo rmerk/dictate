@@ -1565,6 +1565,14 @@ void rcli_get_last_llm_perf(RCLIHandle handle,
     if (out_total_ms)    *out_total_ms = s.generation_us / 1000.0;
 }
 
+void rcli_get_context_info(RCLIHandle handle, int* out_prompt_tokens, int* out_ctx_size) {
+    if (!handle) return;
+    auto* engine = static_cast<RCLIEngine*>(handle);
+    if (!engine->initialized) return;
+    if (out_prompt_tokens) *out_prompt_tokens = static_cast<int>(engine->pipeline.llm().last_stats().prompt_tokens);
+    if (out_ctx_size)      *out_ctx_size      = engine->pipeline.llm().context_size();
+}
+
 void rcli_get_last_tts_perf(RCLIHandle handle,
                                   int* out_samples,
                                   double* out_synthesis_ms,

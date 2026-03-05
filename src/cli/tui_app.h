@@ -403,6 +403,17 @@ public:
                     add_system_message(tool_trace_enabled_ ? "Tool call trace: ON" : "Tool call trace: OFF");
                     return true;
                 }
+                if (c == "x" || c == "X") {
+                    rcli_clear_history(engine_);
+                    ctx_prompt_tokens_.store(0, std::memory_order_relaxed);
+                    {
+                        std::lock_guard<std::mutex> lock(chat_mu_);
+                        chat_history_.clear();
+                    }
+                    add_system_message("Conversation cleared. Context reset.");
+                    screen_->Post(Event::Custom);
+                    return true;
+                }
             }
 
             return false;
@@ -507,6 +518,12 @@ private:
                        << tok << " tok " << tps << " tok/s TTFT " << ttft << "ms";
                     perf = os.str();
                 }
+
+                // Update context usage indicator
+                int pt = 0, cs = 0;
+                rcli_get_context_info(engine_, &pt, &cs);
+                if (pt > 0) ctx_prompt_tokens_.store(pt, std::memory_order_relaxed);
+                if (cs > 0) ctx_size_.store(cs, std::memory_order_relaxed);
 
                 add_response(response, perf);
                 screen_->Post(Event::Custom);
@@ -763,7 +780,54 @@ private:
         metrics.push_back(filler());
         metrics.push_back(text("[M] models [A] actions [B] bench [T] trace") | dim);
 
-        return vbox({row1, hbox(std::move(metrics))});
+        // Context window usage indicator — always pull ctx_size live from the engine
+        // so it reflects the currently loaded model (e.g. after a model switch) without
+        // waiting for the next LLM call.
+        int ctx_used = ctx_prompt_tokens_.load(std::memory_order_relaxed);
+        int ctx_total = 0;
+        if (engine_) {
+            rcli_get_context_info(engine_, nullptr, &ctx_total);
+            if (ctx_total > 0) ctx_size_.store(ctx_total, std::memory_order_relaxed);
+        }
+        if (ctx_total <= 0) ctx_total = ctx_size_.load(std::memory_order_relaxed);
+
+        Element ctx_row;
+        if (ctx_total > 0 && ctx_used > 0) {
+            float ctx_frac = std::min(1.0f, (float)ctx_used / ctx_total);
+            int ctx_pct = (int)(ctx_frac * 100);
+            auto ctx_color = (ctx_pct >= 70) ? theme_.error
+                           : (ctx_pct >= 30) ? theme_.warning
+                           : theme_.success;
+            std::string ctx_label = "Ctx " + std::to_string(ctx_pct) + "% "
+                                  + "(" + std::to_string(ctx_used) + "/"
+                                  + std::to_string(ctx_total) + " tok)";
+            ctx_row = hbox({
+                text(" ") | size(WIDTH, EQUAL, 9),
+                gauge(ctx_frac) | flex | ftxui::color(ctx_color),
+                text(" " + ctx_label + " ") | ftxui::bold | ftxui::color(ctx_color),
+                filler(),
+                text("[X] clear context") | dim,
+            });
+        } else if (ctx_total > 0) {
+            // Engine ready, no query yet — show window size but empty gauge
+            std::string ctx_label = "Ctx 0% (0/" + std::to_string(ctx_total) + " tok)";
+            ctx_row = hbox({
+                text(" ") | size(WIDTH, EQUAL, 9),
+                gauge(0.0f) | flex | ftxui::color(theme_.success),
+                text(" " + ctx_label + " ") | dim,
+                filler(),
+                text("[X] clear context") | dim,
+            });
+        } else {
+            ctx_row = hbox({
+                text(" ") | size(WIDTH, EQUAL, 9),
+                text("context: loading...") | dim,
+                filler(),
+                text("[X] clear context") | dim,
+            });
+        }
+
+        return vbox({row1, hbox(std::move(metrics)), ctx_row});
     }
 
     Element build_chat_panel() {
@@ -887,6 +951,7 @@ private:
             right_items.push_back(text("[T] trace ") | ftxui::bold | ftxui::color(theme_.info));
         else
             right_items.push_back(text("[T] trace ") | dim);
+        right_items.push_back(text("[X] clear ") | dim);
         right_items.push_back(text("[Q] quit ") | dim);
 
         return hbox({
@@ -1736,6 +1801,7 @@ private:
             add_system_message("  R                RAG panel (status/clear/ingest)");
             add_system_message("  D                Delete models (interactive cleanup)");
             add_system_message("  T                Toggle tool call trace (show tool calls & results)");
+            add_system_message("  X                Clear conversation + reset context window");
             add_system_message("  Q                Quit");
             return;
         }
@@ -1939,6 +2005,12 @@ private:
                     perf = os.str();
                 }
 
+                // Update context usage indicator
+                int pt = 0, cs = 0;
+                rcli_get_context_info(engine_, &pt, &cs);
+                if (pt > 0) ctx_prompt_tokens_.store(pt, std::memory_order_relaxed);
+                if (cs > 0) ctx_size_.store(cs, std::memory_order_relaxed);
+
                 add_response(response, perf);
                 screen_->Post(Event::Custom);
 
@@ -2018,6 +2090,8 @@ private:
     // so leaving the callback always registered has effectively zero overhead.
     std::atomic<bool> tool_trace_enabled_{false};
     std::atomic<double> last_ttfa_ms_{0.0};
+    std::atomic<int> ctx_prompt_tokens_{0};
+    std::atomic<int> ctx_size_{0};
 
     std::mutex chat_mu_;
     std::deque<ChatMessage> chat_history_;

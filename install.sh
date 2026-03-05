@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="0.1.4"
 REPO="RunanywhereAI/RCLI"
 TAP="RunanywhereAI/rcli"
 FORMULA="rcli"
@@ -10,6 +9,14 @@ info()  { printf "\033[1;34m==>\033[0m \033[1m%s\033[0m\n" "$*"; }
 ok()    { printf "\033[1;32m==>\033[0m %s\n" "$*"; }
 warn()  { printf "\033[1;33mWarning:\033[0m %s\n" "$*"; }
 fail()  { printf "\033[1;31mError:\033[0m %s\n" "$*" >&2; exit 1; }
+
+# Auto-detect latest release from GitHub API
+info "Checking latest RCLI release..."
+VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+    | grep '"tag_name"' \
+    | sed 's/.*"v\([^"]*\)".*/\1/')
+[[ -n "$VERSION" ]] || fail "Could not determine latest release version. Check your internet connection."
+info "Latest version: v${VERSION}"
 
 [[ "$(uname -s)" == "Darwin" ]] || fail "RCLI requires macOS. Detected: $(uname -s)"
 
