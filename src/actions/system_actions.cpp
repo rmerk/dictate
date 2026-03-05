@@ -9,7 +9,7 @@ namespace rcli {
 static ActionResult action_screenshot(const std::string& args_json) {
     std::string path = json_get_string(args_json, "path");
     if (path.empty()) path = "/tmp/rcli_screenshot.png";
-    auto r = run_shell("screencapture -x '" + escape_applescript(path) + "'");
+    auto r = run_shell("screencapture -x '" + escape_shell(path) + "'");
     if (r.success)
         return {true, "Screenshot saved to " + path, "",
                 "{\"action\": \"screenshot\", \"path\": \"" + path + "\"}"};
@@ -46,7 +46,7 @@ static ActionResult action_lock_screen(const std::string& args_json) {
 
 static ActionResult action_get_battery(const std::string& args_json) {
     (void)args_json;
-    auto r = run_shell("pmset -g batt | grep -Eo '\\d+%' | head -1");
+    auto r = run_shell("pmset -g batt | grep -Eo '[0-9]+%' | head -1");
     if (r.success && !r.output.empty()) {
         std::string pct = trim_output(r.output);
         auto r2 = run_shell("pmset -g batt | grep -o 'charging\\|discharging\\|charged\\|AC Power'");
@@ -164,7 +164,7 @@ void register_system_actions(ActionRegistry& registry) {
     registry.register_action(
         {"screenshot", "Take a screenshot",
          "{\"path\": \"optional save path\"}",
-         {"screenshot", "screen capture", "take a screenshot", "capture screen"},
+         false,
          "system",
          "Take a screenshot",
          "rcli action screenshot '{}'"},
@@ -173,7 +173,7 @@ void register_system_actions(ActionRegistry& registry) {
     registry.register_action(
         {"set_volume", "Set system volume (0-100)",
          "{\"level\": \"0-100\"}",
-         {"volume", "set volume", "turn up", "turn down", "mute", "unmute"},
+         true,
          "system",
          "Set the volume to 50 percent",
          "rcli action set_volume '{\"level\": \"50\"}'"},
@@ -182,7 +182,7 @@ void register_system_actions(ActionRegistry& registry) {
     registry.register_action(
         {"toggle_dark_mode", "Toggle between light and dark appearance",
          "{}",
-         {"dark mode", "light mode", "toggle dark", "switch theme", "night mode"},
+         true,
          "system",
          "Turn on dark mode",
          "rcli action toggle_dark_mode '{}'"},
@@ -191,7 +191,7 @@ void register_system_actions(ActionRegistry& registry) {
     registry.register_action(
         {"lock_screen", "Lock the screen",
          "{}",
-         {"lock screen", "lock my mac", "lock computer"},
+         false,
          "system",
          "Lock my screen",
          "rcli action lock_screen '{}'"},
@@ -200,7 +200,7 @@ void register_system_actions(ActionRegistry& registry) {
     registry.register_action(
         {"get_battery", "Get battery percentage and charging status",
          "{}",
-         {"battery", "battery level", "how much battery", "charge level", "power"},
+         true,
          "system",
          "What's my battery level?",
          "rcli action get_battery '{}'"},
@@ -209,7 +209,7 @@ void register_system_actions(ActionRegistry& registry) {
     registry.register_action(
         {"get_wifi", "Get the current Wi-Fi network name",
          "{}",
-         {"wifi", "wi-fi", "what wifi", "network name", "connected to"},
+         true,
          "system",
          "What Wi-Fi am I connected to?",
          "rcli action get_wifi '{}'"},
@@ -218,7 +218,7 @@ void register_system_actions(ActionRegistry& registry) {
     registry.register_action(
         {"open_settings", "Open System Settings (optionally to a specific pane: wifi, bluetooth, sound, display, battery, keyboard, privacy, notifications, general, appearance, etc.)",
          "{\"pane\": \"optional pane name\"}",
-         {"settings", "system settings", "preferences", "system preferences", "open settings"},
+         false,
          "system",
          "Open Wi-Fi settings",
          "rcli action open_settings '{\"pane\": \"wifi\"}'"},
@@ -227,8 +227,7 @@ void register_system_actions(ActionRegistry& registry) {
     registry.register_action(
         {"get_disk_usage", "Show disk space usage",
          "{}",
-         {"disk space", "disk usage", "storage space", "how much storage", "free space",
-          "storage", "disk", "space left"},
+         false,
          "system",
          "How much disk space do I have?",
          "rcli action get_disk_usage '{}'"},
@@ -237,8 +236,7 @@ void register_system_actions(ActionRegistry& registry) {
     registry.register_action(
         {"get_uptime", "Show how long the system has been running",
          "{}",
-         {"uptime", "how long running", "system uptime", "been running",
-          "computer been", "mac been running", "how long has"},
+         false,
          "system",
          "How long has my Mac been running?",
          "rcli action get_uptime '{}'"},
@@ -247,7 +245,7 @@ void register_system_actions(ActionRegistry& registry) {
     registry.register_action(
         {"get_ip_address", "Show local and public IP addresses",
          "{}",
-         {"ip address", "my ip", "what's my ip", "local ip", "public ip", "ip"},
+         false,
          "system",
          "What's my IP address?",
          "rcli action get_ip_address '{}'"},

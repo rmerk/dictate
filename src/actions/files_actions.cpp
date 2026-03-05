@@ -9,7 +9,7 @@ static ActionResult action_search_files(const std::string& args_json) {
     if (query.empty())
         return {false, "", "Query required", "{\"error\": \"missing query\"}"};
 
-    auto r = run_shell("mdfind '" + escape_applescript(query) + "' | head -20", 15000);
+    auto r = run_shell("mdfind '" + escape_shell(query) + "' | head -20", 15000);
     if (r.success)
         return {true, r.output.empty() ? "No files found" : r.output, "",
                 "{\"action\": \"search_files\", \"query\": \"" + query + "\"}"};
@@ -20,8 +20,7 @@ void register_files_actions(ActionRegistry& registry) {
     registry.register_action(
         {"search_files", "Search for files using Spotlight",
          "{\"query\": \"search term\"}",
-         {"find file", "search file", "search for", "locate", "where is", "find document",
-          "search my files", "search files", "spotlight search"},
+         false,
          "system",
          "Find files about project plan",
          "rcli action search_files '{\"query\": \"project plan\"}'"},

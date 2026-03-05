@@ -70,8 +70,13 @@ bool Orchestrator::init(const PipelineConfig& config) {
     }
 
     tools_.register_defaults();
+    tools_.set_model_profile(&llm_.profile());
 
-    llm_.cache_system_prompt(config.system_prompt);
+    // Cache tool-aware system prompt (includes tool definitions) in KV cache.
+    // When external tool defs are set, they'll be included automatically.
+    std::string tool_system = llm_.profile().build_tool_system_prompt(
+        config.system_prompt, tools_.get_tool_definitions_json());
+    llm_.cache_system_prompt(tool_system);
 
     LOG_INFO("Pipeline", "Ready");
     LOG_DEBUG("Pool", "Final usage: %.1fMB / %.1fMB (%.1f%%)",
@@ -204,25 +209,76 @@ bool Orchestrator::run_file_pipeline(const std::string& input_wav, const std::st
         tts_queue_cv.notify_one();
     };
 
-    std::string tool_defs = tools_.get_tool_definitions_json();
     std::string llm_response;
-    bool use_tools = !tool_defs.empty() && tools_.needs_tools(stt_text);
+    fprintf(stderr, "[Pipeline] LLM-driven routing (query: \"%s\")\n", stt_text.c_str());
 
-    fprintf(stderr, "[Pipeline] Tool routing: %s (query: \"%s\")\n",
-            use_tools ? "WITH tools" : "NO tools (knowledge query)", stt_text.c_str());
+    // Speculative first-token detection: buffer initial tokens to detect tool calls.
+    // Adaptive: extends the window if the buffer ends with a partial tool call tag prefix.
+    std::string token_buffer;
+    bool detected_tool_call = false;
+    constexpr int SPECULATIVE_TOKENS = 15;
+    int tokens_buffered = 0;
+    SentenceDetector detector(queue_sentence, 3, 25, 7);
 
-    if (use_tools) {
-        // === TOOL-AWARE PATH ===
-        // First pass: generate WITHOUT streaming to TTS
-        llm_response = llm_.generate_with_tools(
-            stt_text, tool_defs, config_.system_prompt, nullptr
-        );
+    // Partial prefixes of known tool_call_start tags that could still become a full match
+    const std::string& tc_start = llm_.profile().tool_call_start;
 
-        fprintf(stderr, "[Pipeline] First pass: \"%s\"\n", llm_response.c_str());
+    // Inject tool focus hint into user turn to steer model without invalidating KV cache
+    std::string tool_hint = tools_.build_tool_hint(stt_text);
+    std::string hinted_text = tool_hint.empty() ? stt_text : (tool_hint + "\n" + stt_text);
 
-        // Check for tool calls
+    std::string prompt;
+    if (llm_.has_prompt_cache()) {
+        prompt = llm_.profile().build_user_turn(hinted_text);
+    } else {
+        // Build tool-aware system prompt only when KV cache isn't active
+        std::string tool_defs = tools_.get_tool_definitions_json();
+        std::string tool_system = llm_.profile().build_tool_system_prompt(
+            config_.system_prompt, tool_defs);
+        prompt = llm_.build_chat_prompt(tool_system, {}, hinted_text);
+    }
+
+    auto speculative_callback = [&](const TokenOutput& tok) {
+        if (detected_tool_call) return;
+        token_buffer += tok.text;
+        tokens_buffered++;
+        if (tokens_buffered <= SPECULATIVE_TOKENS) {
+            if (token_buffer.find(tc_start) != std::string::npos) {
+                detected_tool_call = true;
+            }
+        } else if (!detected_tool_call) {
+            // Adaptive extension: if the buffer tail looks like the start of a tool tag,
+            // keep buffering instead of flushing (e.g. buffer ends with "<tool" or "<|tool")
+            bool partial_match = false;
+            if (!tc_start.empty()) {
+                for (size_t len = 1; len < tc_start.size() && len <= token_buffer.size(); len++) {
+                    if (token_buffer.compare(token_buffer.size() - len, len, tc_start, 0, len) == 0) {
+                        partial_match = true;
+                        break;
+                    }
+                }
+            }
+            if (partial_match) {
+                return;
+            }
+            // No partial match -- flush buffer and stream to TTS
+            detector.feed(token_buffer);
+            token_buffer.clear();
+        }
+        if (tokens_buffered > SPECULATIVE_TOKENS && !detected_tool_call && token_buffer.empty()) {
+            detector.feed(tok.text);
+        }
+    };
+
+    if (llm_.has_prompt_cache()) {
+        llm_response = llm_.generate_with_cached_prompt(prompt, speculative_callback);
+    } else {
+        llm_response = llm_.generate(prompt, speculative_callback);
+    }
+
+    if (detected_tool_call) {
+        // Tool mode: parse and execute tool calls
         auto tool_calls = tools_.parse_tool_calls(llm_response);
-
         if (!tool_calls.empty()) {
             fprintf(stderr, "[Pipeline] Detected %zu tool call(s), executing...\n", tool_calls.size());
             auto results = tools_.execute_all(tool_calls);
@@ -231,47 +287,25 @@ bool Orchestrator::run_file_pipeline(const std::string& input_wav, const std::st
                         r.name.c_str(), r.success ? "OK" : "FAIL", r.result_json.c_str());
             }
 
-            // Build continuation prompt with tool results
             std::string formatted_results = tools_.format_results(results);
             std::string continuation = llm_.build_tool_continuation_prompt(
-                config_.system_prompt, stt_text, llm_response, formatted_results
-            );
+                config_.system_prompt, stt_text, llm_response, formatted_results);
 
-            // Clear KV cache for fresh second pass
-            //llm_.clear_kv_cache();
-
-            // Second pass: generate WITH streaming to TTS
-            SentenceDetector detector(queue_sentence, 3, 25, 7);
+            SentenceDetector detector2(queue_sentence, 3, 25, 7);
             llm_response = llm_.generate(continuation, [&](const TokenOutput& tok) {
-                detector.feed(tok.text);
+                detector2.feed(tok.text);
             });
-            detector.flush();
-
+            detector2.flush();
             fprintf(stderr, "[Pipeline] Second pass: \"%s\"\n", llm_response.c_str());
         } else {
-            // No tool calls — sanitize and feed first-pass text to TTS
-            SentenceDetector detector(queue_sentence, 3, 25, 7);
+            // False positive: feed accumulated text to TTS
             detector.feed(sanitize_for_tts(llm_response));
             detector.flush();
         }
     } else {
-        // === NO-TOOLS PATH (knowledge queries) ===
-        SentenceDetector detector(queue_sentence, 3, 25, 7);
-
-        if (llm_.has_prompt_cache()) {
-            // Use cached system prompt — only eval user portion
-            std::string user_portion =
-                "<|im_start|>user\n" + stt_text + " /no_think<|im_end|>\n"
-                "<|im_start|>assistant\n";
-            llm_response = llm_.generate_with_cached_prompt(user_portion,
-                [&](const TokenOutput& tok) { detector.feed(tok.text); });
-        } else {
-            std::string prompt = llm_.build_chat_prompt(
-                config_.system_prompt, {}, stt_text
-            );
-            llm_response = llm_.generate(prompt, [&](const TokenOutput& tok) {
-                detector.feed(tok.text);
-            });
+        // Stream mode: remaining tokens already fed via callback, just flush
+        if (!token_buffer.empty()) {
+            detector.feed(token_buffer);
         }
         detector.flush();
     }
@@ -489,20 +523,55 @@ bool Orchestrator::run_stream_pipeline(const std::string& input_wav) {
         tts_queue_cv.notify_one();
     };
 
-    std::string tool_defs = tools_.get_tool_definitions_json();
     std::string llm_response;
-    bool use_tools = !tool_defs.empty() && tools_.needs_tools(stt_text);
+    fprintf(stderr, "[Pipeline] LLM-driven routing\n");
 
-    fprintf(stderr, "[Pipeline] Tool routing: %s\n", use_tools ? "WITH tools" : "NO tools (knowledge query)");
+    // Speculative first-token detection
+    std::string token_buffer;
+    bool detected_tool_call = false;
+    constexpr int SPECULATIVE_TOKENS = 15;
+    int tokens_buffered = 0;
+    SentenceDetector detector(queue_sentence, 3, 25, 7);
 
-    if (use_tools) {
-        // First pass: no TTS
-        llm_response = llm_.generate_with_tools(
-            stt_text, tool_defs, config_.system_prompt, nullptr
-        );
+    // Inject tool focus hint into user turn to steer model without invalidating KV cache
+    std::string stream_hint = tools_.build_tool_hint(stt_text);
+    std::string hinted_stream = stream_hint.empty() ? stt_text : (stream_hint + "\n" + stt_text);
 
+    std::string prompt;
+    if (llm_.has_prompt_cache()) {
+        prompt = llm_.profile().build_user_turn(hinted_stream);
+    } else {
+        std::string tool_defs = tools_.get_tool_definitions_json();
+        std::string tool_system = llm_.profile().build_tool_system_prompt(
+            config_.system_prompt, tool_defs);
+        prompt = llm_.build_chat_prompt(tool_system, {}, hinted_stream);
+    }
+
+    auto speculative_callback = [&](const TokenOutput& tok) {
+        if (detected_tool_call) return;
+        token_buffer += tok.text;
+        tokens_buffered++;
+        if (tokens_buffered <= SPECULATIVE_TOKENS) {
+            if (token_buffer.find(llm_.profile().tool_call_start) != std::string::npos) {
+                detected_tool_call = true;
+            }
+        } else if (!detected_tool_call) {
+            detector.feed(token_buffer);
+            token_buffer.clear();
+        }
+        if (tokens_buffered > SPECULATIVE_TOKENS && !detected_tool_call) {
+            detector.feed(tok.text);
+        }
+    };
+
+    if (llm_.has_prompt_cache()) {
+        llm_response = llm_.generate_with_cached_prompt(prompt, speculative_callback);
+    } else {
+        llm_response = llm_.generate(prompt, speculative_callback);
+    }
+
+    if (detected_tool_call) {
         auto tool_calls = tools_.parse_tool_calls(llm_response);
-
         if (!tool_calls.empty()) {
             fprintf(stderr, "[Pipeline] Detected %zu tool call(s), executing...\n", tool_calls.size());
             auto results = tools_.execute_all(tool_calls);
@@ -516,40 +585,22 @@ bool Orchestrator::run_stream_pipeline(const std::string& input_wav) {
 
             std::string formatted_results = tools_.format_results(results);
             std::string continuation = llm_.build_tool_continuation_prompt(
-                config_.system_prompt, stt_text, llm_response, formatted_results
-            );
+                config_.system_prompt, stt_text, llm_response, formatted_results);
 
             llm_.clear_kv_cache();
 
-            // Second pass: with TTS streaming
-            SentenceDetector detector(queue_sentence, 3, 25, 7);
+            SentenceDetector detector2(queue_sentence, 3, 25, 7);
             llm_response = llm_.generate(continuation, [&](const TokenOutput& tok) {
-                detector.feed(tok.text);
+                detector2.feed(tok.text);
             });
-            detector.flush();
+            detector2.flush();
         } else {
-            // No tool calls — sanitize and feed first-pass text to TTS
-            SentenceDetector detector(queue_sentence, 3, 25, 7);
             detector.feed(sanitize_for_tts(llm_response));
             detector.flush();
         }
     } else {
-        // No-tools path (knowledge queries)
-        SentenceDetector detector(queue_sentence, 3, 25, 7);
-
-        if (llm_.has_prompt_cache()) {
-            std::string user_portion =
-                "<|im_start|>user\n" + stt_text + " /no_think<|im_end|>\n"
-                "<|im_start|>assistant\n";
-            llm_response = llm_.generate_with_cached_prompt(user_portion,
-                [&](const TokenOutput& tok) { detector.feed(tok.text); });
-        } else {
-            std::string prompt = llm_.build_chat_prompt(
-                config_.system_prompt, {}, stt_text
-            );
-            llm_response = llm_.generate(prompt, [&](const TokenOutput& tok) {
-                detector.feed(tok.text);
-            });
+        if (!token_buffer.empty()) {
+            detector.feed(token_buffer);
         }
         detector.flush();
     }
@@ -845,17 +896,18 @@ void Orchestrator::llm_thread_fn() {
             tts_queue_cv.notify_one();
         };
 
+        // Build tool-aware system prompt (always includes tool definitions)
         std::string tool_defs = tools_.get_tool_definitions_json();
+        std::string tool_system = llm_.profile().build_tool_system_prompt(
+            config_.system_prompt, tool_defs);
         std::string response;
-        bool use_tools = !tool_defs.empty() && tools_.needs_tools(user_text);
 
         // Compute history budget for this turn
         int ctx_size = llm_.context_size();
-        int system_tokens = llm_.count_tokens(config_.system_prompt);
+        int system_tokens = llm_.count_tokens(tool_system);
         int user_tokens = llm_.count_tokens(user_text);
         int history_budget = ctx_size - 512 - system_tokens - user_tokens - 50;
 
-        // Truncate history to fit budget
         std::vector<std::pair<std::string, std::string>> trimmed;
         if (!live_history_.empty() && history_budget > 0) {
             int total = 0;
@@ -868,16 +920,44 @@ void Orchestrator::llm_thread_fn() {
             }
         }
 
-        if (use_tools) {
-            // First pass: build prompt with history, no TTS callback
-            std::string augmented_system = llm_.profile().build_tool_system_prompt(
-                config_.system_prompt, tool_defs);
-            std::string prompt = llm_.build_chat_prompt(augmented_system, trimmed, user_text);
-            prompt += llm_.profile().tool_call_start + "\n";
-            response = llm_.profile().tool_call_start + "\n" + llm_.generate(prompt, nullptr);
+        // Speculative first-token detection
+        std::string token_buffer;
+        bool detected_tool_call = false;
+        constexpr int SPECULATIVE_TOKENS = 15;
+        int tokens_buffered = 0;
+        SentenceDetector detector(queue_sentence, 3, 25, 7);
 
+        auto speculative_callback = [&](const TokenOutput& tok) {
+            if (detected_tool_call) return;
+            token_buffer += tok.text;
+            tokens_buffered++;
+            if (tokens_buffered <= SPECULATIVE_TOKENS) {
+                if (token_buffer.find(llm_.profile().tool_call_start) != std::string::npos) {
+                    detected_tool_call = true;
+                }
+            } else if (!detected_tool_call) {
+                detector.feed(token_buffer);
+                token_buffer.clear();
+            }
+            if (tokens_buffered > SPECULATIVE_TOKENS && !detected_tool_call) {
+                detector.feed(tok.text);
+            }
+        };
+
+        // Inject tool focus hint to steer model without invalidating KV cache
+        std::string live_hint = tools_.build_tool_hint(user_text);
+        std::string hinted_user = live_hint.empty() ? user_text : (live_hint + "\n" + user_text);
+
+        if (llm_.has_prompt_cache() && trimmed.empty()) {
+            std::string user_portion = llm_.profile().build_user_turn(hinted_user);
+            response = llm_.generate_with_cached_prompt(user_portion, speculative_callback);
+        } else {
+            std::string prompt = llm_.build_chat_prompt(tool_system, trimmed, hinted_user);
+            response = llm_.generate(prompt, speculative_callback);
+        }
+
+        if (detected_tool_call) {
             auto tool_calls = tools_.parse_tool_calls(response);
-
             if (!tool_calls.empty()) {
                 LOG_DEBUG("Pipeline", "Tool calls detected, executing...");
                 auto results = tools_.execute_all(tool_calls);
@@ -888,42 +968,22 @@ void Orchestrator::llm_thread_fn() {
 
                 std::string formatted = tools_.format_results(results);
                 std::string continuation = llm_.build_tool_continuation_prompt(
-                    config_.system_prompt, user_text, response, formatted
-                );
+                    config_.system_prompt, user_text, response, formatted);
 
                 llm_.clear_kv_cache();
 
-                // Second pass: with TTS streaming
-                SentenceDetector detector(queue_sentence, 3, 25, 7);
+                SentenceDetector detector2(queue_sentence, 3, 25, 7);
                 response = llm_.generate(continuation, [&](const TokenOutput& tok) {
-                    detector.feed(tok.text);
+                    detector2.feed(tok.text);
                 });
-                detector.flush();
+                detector2.flush();
             } else {
-                // No tool calls — sanitize and send to TTS
-                SentenceDetector detector(queue_sentence, 3, 25, 7);
                 detector.feed(sanitize_for_tts(response));
                 detector.flush();
             }
         } else {
-            // No tools path (knowledge query) — stream directly
-            SentenceDetector detector(queue_sentence, 3, 25, 7);
-
-            if (llm_.has_prompt_cache() && trimmed.empty()) {
-                // First turn: use cached system prompt for speed
-                std::string user_portion =
-                    "<|im_start|>user\n" + user_text + " /no_think<|im_end|>\n"
-                    "<|im_start|>assistant\n";
-                response = llm_.generate_with_cached_prompt(user_portion,
-                    [&](const TokenOutput& tok) { detector.feed(tok.text); });
-            } else {
-                // Subsequent turns: full prompt with history
-                std::string prompt = llm_.build_chat_prompt(
-                    config_.system_prompt, trimmed, user_text
-                );
-                response = llm_.generate(prompt, [&](const TokenOutput& tok) {
-                    detector.feed(tok.text);
-                });
+            if (!token_buffer.empty()) {
+                detector.feed(token_buffer);
             }
             detector.flush();
         }
@@ -958,6 +1018,36 @@ void Orchestrator::llm_thread_fn() {
 
         set_state(PipelineState::LISTENING);
     }
+}
+
+void Orchestrator::recache_system_prompt() {
+    std::string tool_system = llm_.profile().build_tool_system_prompt(
+        config_.system_prompt, tools_.get_tool_definitions_json());
+    llm_.cache_system_prompt(tool_system);
+    LOG_DEBUG("Pipeline", "Re-cached system prompt with updated tool defs");
+}
+
+bool Orchestrator::reload_llm(const LlmConfig& new_config) {
+    auto cur = state_.load(std::memory_order_acquire);
+    if (cur != PipelineState::IDLE) {
+        LOG_ERROR("Pipeline", "Cannot reload LLM while pipeline is %s",
+                  pipeline_state_str(cur));
+        return false;
+    }
+
+    LOG_INFO("Pipeline", "Hot-swapping LLM model: %s", new_config.model_path.c_str());
+    llm_.shutdown();
+
+    if (!llm_.init(new_config)) {
+        LOG_ERROR("Pipeline", "Failed to init new LLM model");
+        return false;
+    }
+
+    config_.llm = new_config;
+    tools_.set_model_profile(&llm_.profile());
+    recache_system_prompt();
+    LOG_INFO("Pipeline", "LLM hot-swap complete (%s profile)", llm_.profile().family_name.c_str());
+    return true;
 }
 
 void Orchestrator::set_state(PipelineState new_state) {

@@ -87,8 +87,7 @@ void register_browser_actions(ActionRegistry& registry) {
     registry.register_action(
         {"get_browser_url", "Get the URL of the active browser tab (Safari/Chrome/Arc)",
          "{}",
-         {"current url", "browser url", "what page", "what site", "current tab",
-          "what am i looking at", "what url", "url am i on", "which url"},
+         false,
          "web",
          "What page am I looking at?",
          "rcli action get_browser_url '{}'"},
@@ -97,7 +96,7 @@ void register_browser_actions(ActionRegistry& registry) {
     registry.register_action(
         {"get_browser_tabs", "List all open browser tabs in the front window",
          "{}",
-         {"browser tabs", "open tabs", "list tabs", "show tabs", "my tabs"},
+         false,
          "web",
          "Show my open tabs",
          "rcli action get_browser_tabs '{}'"},

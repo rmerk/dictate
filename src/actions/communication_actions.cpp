@@ -4,7 +4,7 @@
 
 namespace rcli {
 
-static std::string resolve_contact(const std::string& input) {
+std::string resolve_contact(const std::string& input) {
     if (input.find('@') != std::string::npos) return input;
     bool has_digit = false;
     for (char c : input) if (std::isdigit(static_cast<unsigned char>(c))) has_digit = true;
@@ -39,7 +39,7 @@ static ActionResult action_facetime_call(const std::string& args_json) {
 
     std::string resolved = resolve_contact(contact);
     std::string url = "facetime://" + url_encode(resolved);
-    auto r = run_shell("open '" + url + "'");
+    auto r = run_shell("open '" + escape_shell(url) + "'");
     if (r.success) return {true, "Starting FaceTime video call with " + contact, "",
         "{\"action\": \"facetime_call\", \"contact\": \"" + escape_applescript(contact) +
         "\", \"resolved\": \"" + escape_applescript(resolved) + "\"}"};
@@ -52,7 +52,7 @@ static ActionResult action_facetime_audio(const std::string& args_json) {
 
     std::string resolved = resolve_contact(contact);
     std::string url = "facetime-audio://" + url_encode(resolved);
-    auto r = run_shell("open '" + url + "'");
+    auto r = run_shell("open '" + escape_shell(url) + "'");
     if (r.success) return {true, "Starting FaceTime audio call with " + contact, "",
         "{\"action\": \"facetime_audio\", \"contact\": \"" + escape_applescript(contact) +
         "\", \"resolved\": \"" + escape_applescript(resolved) + "\"}"};
@@ -65,7 +65,7 @@ static ActionResult action_run_shortcut(const std::string& args_json) {
     if (name.empty()) return {false, "", "Shortcut name required", "{\"error\": \"missing name\"}"};
     std::string url = "shortcuts://run-shortcut?name=" + url_encode(name);
     if (!input.empty()) url += "&input=text&text=" + url_encode(input);
-    auto r = run_shell("open '" + url + "'");
+    auto r = run_shell("open '" + escape_shell(url) + "'");
     if (r.success) return {true, "Running shortcut: " + name, "",
         "{\"action\": \"run_shortcut\", \"name\": \"" + escape_applescript(name) + "\"}"};
     return {false, "", r.error, "{\"error\": \"" + r.error + "\"}"};
@@ -75,7 +75,7 @@ void register_communication_actions(ActionRegistry& registry) {
     registry.register_action(
         {"facetime_call", "Start a FaceTime video call",
          "{\"contact\": \"name, phone number, or email\"}",
-         {"facetime", "video call", "facetime call"},
+         false,
          "communication",
          "FaceTime John",
          "rcli action facetime_call '{\"contact\": \"john@example.com\"}'"},
@@ -84,7 +84,7 @@ void register_communication_actions(ActionRegistry& registry) {
     registry.register_action(
         {"facetime_audio", "Start a FaceTime audio call (phone call)",
          "{\"contact\": \"name, phone number, or email\"}",
-         {"phone call", "ring", "facetime audio", "audio call", "call someone", "make a call"},
+         false,
          "communication",
          "Call Mom",
          "rcli action facetime_audio '{\"contact\": \"+1234567890\"}'"},
@@ -93,7 +93,7 @@ void register_communication_actions(ActionRegistry& registry) {
     registry.register_action(
         {"run_shortcut", "Run an Apple Shortcut by name",
          "{\"name\": \"shortcut name\", \"input\": \"optional input text\"}",
-         {"shortcut", "run shortcut", "shortcuts", "run my shortcut", "automation"},
+         false,
          "productivity",
          "Run my Morning Routine shortcut",
          "rcli action run_shortcut '{\"name\": \"Morning Routine\"}'"},

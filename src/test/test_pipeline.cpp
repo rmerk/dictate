@@ -113,15 +113,38 @@ static void test_actions() {
     TEST("get_definitions_json is valid", !defs.empty() && defs[0] == '[');
     TEST_INFO("Definitions JSON: %zu bytes", defs.size());
 
-    // Test needs_action keyword detection
-    TEST("needs_action('open Safari')", registry.needs_action("open Safari"));
-    TEST("needs_action('create a note')", registry.needs_action("create a note"));
-    TEST("needs_action('send message to John')", registry.needs_action("send message to John"));
-    TEST("needs_action('set a reminder')", registry.needs_action("set a reminder"));
-    TEST("needs_action('search for files')", registry.needs_action("search for files"));
-    TEST("needs_action('take screenshot')", registry.needs_action("take screenshot"));
-    TEST("!needs_action('hello how are you')", !registry.needs_action("hello how are you"));
-    TEST("!needs_action('what is the weather')", !registry.needs_action("what is the weather"));
+    // Test enable/disable
+    TEST_SECTION("Action Enable/Disable");
+    TEST("open_app is enabled by default", registry.is_enabled("open_app"));
+    TEST("screenshot is disabled by default", !registry.is_enabled("screenshot"));
+
+    int initial_enabled = registry.num_enabled();
+    TEST_INFO("Initially %d actions enabled", initial_enabled);
+
+    registry.set_enabled("screenshot", true);
+    TEST("screenshot enabled after set_enabled(true)", registry.is_enabled("screenshot"));
+    TEST("num_enabled increased", registry.num_enabled() == initial_enabled + 1);
+
+    registry.set_enabled("open_app", false);
+    TEST("open_app disabled after set_enabled(false)", !registry.is_enabled("open_app"));
+    TEST("num_enabled back to initial", registry.num_enabled() == initial_enabled);
+
+    // Test get_definitions_json filters by enabled
+    std::string enabled_defs = registry.get_definitions_json();
+    TEST("enabled defs does not contain open_app (disabled)", enabled_defs.find("open_app") == std::string::npos);
+    TEST("enabled defs contains screenshot (enabled)", enabled_defs.find("screenshot") != std::string::npos);
+
+    std::string all_defs = registry.get_all_definitions_json();
+    TEST("all defs contains open_app", all_defs.find("open_app") != std::string::npos);
+    TEST("all defs contains screenshot", all_defs.find("screenshot") != std::string::npos);
+
+    // Restore for remaining tests
+    registry.set_enabled("open_app", true);
+    registry.set_enabled("screenshot", false);
+
+    auto enabled_list = registry.list_enabled_actions();
+    TEST("list_enabled_actions returns entries", !enabled_list.empty());
+    TEST_INFO("Enabled actions: %d", (int)enabled_list.size());
 
     // Test clipboard actions (safe to run)
     TEST_SECTION("Action Execution: Clipboard");
@@ -613,9 +636,6 @@ static void test_tool_engine() {
     tools.register_tool("test_tool", [](const std::string& args) -> std::string {
         return R"({"result": "tool executed", "args": )" + args + "}";
     });
-
-    // Test needs_tools
-    TEST("needs_tools('calculate 5+3')", tools.needs_tools("calculate 5+3"));
 
     // Test parse_tool_calls
     std::string llm_output = R"(I'll help you with that. <tool_call>{"name":"test_tool","arguments":{"key":"value"}}</tool_call>)";

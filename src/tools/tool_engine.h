@@ -8,6 +8,8 @@
 
 namespace rastack {
 
+struct ModelProfile;
+
 class ToolEngine {
 public:
     using ToolFunction = std::function<std::string(const std::string& args_json)>;
@@ -15,52 +17,46 @@ public:
     ToolEngine();
     ~ToolEngine() = default;
 
-    // Register a tool
     void register_tool(const std::string& name, ToolFunction fn);
-
-    // Register default built-in tools
     void register_defaults();
 
-    // Get tool definitions as JSON (for LLM system prompt).
     // Returns external definitions if set, otherwise the built-in defaults.
     std::string get_tool_definitions_json() const;
 
     // Set external tool definitions JSON (e.g., from ActionRegistry).
-    // When set, get_tool_definitions_json() returns this instead of defaults.
     void set_external_tool_definitions(const std::string& json);
 
-    // Parse tool calls from LLM output
+    // Set the active model profile for format-aware parsing (non-owning pointer)
+    void set_model_profile(const ModelProfile* profile) { model_profile_ = profile; }
+
+    // Delegates to ModelProfile::parse_tool_calls() when a profile is set
     std::vector<ToolCall> parse_tool_calls(const std::string& llm_output) const;
-
-    // Execute a single tool
     ToolResult execute(const ToolCall& call);
-
-    // Execute multiple tools (could be parallelized)
     std::vector<ToolResult> execute_all(const std::vector<ToolCall>& calls);
-
-    // Format tool results for injection back into LLM context
     std::string format_results(const std::vector<ToolResult>& results) const;
 
+    // Build a lightweight tool focus hint for injection into the user turn.
+    // Returns e.g. "[Relevant tools: create_reminder, open_app]" or "" if no strong matches.
+    // Does not invalidate the KV cache -- the hint goes in the user turn, not the system prompt.
+    std::string build_tool_hint(const std::string& query, int top_k = 5) const;
+
     int num_tools() const { return static_cast<int>(tools_.size()); }
-
-    // Check if a tool exists by name
     bool has_tool(const std::string& name) const { return tools_.count(name) > 0; }
-
-    // Lightweight heuristic: does the user query likely need tool calls?
-    // Uses registered tool keywords (not hardcoded lists) to decide.
-    // This avoids injecting tool defs for pure knowledge queries.
-    bool needs_tools(const std::string& user_query) const;
-
-    // Register keywords for a tool (used by ActionRegistry bridge).
-    void register_tool_keywords(const std::string& name, const std::vector<std::string>& keywords);
-
-    // Legacy static version (uses built-in tool keywords only).
-    static bool needs_tools_static(const std::string& user_query);
+    std::vector<std::string> list_tool_names() const {
+        std::vector<std::string> names;
+        for (auto& [n, _] : tools_) names.push_back(n);
+        return names;
+    }
 
 private:
+    // Parsed name+description pairs from external_tool_defs_ (rebuilt on set)
+    struct ToolInfo { std::string name; std::string description; };
+    std::vector<ToolInfo> tool_info_cache_;
+    void rebuild_tool_info_cache();
+
     std::unordered_map<std::string, ToolFunction> tools_;
-    std::unordered_map<std::string, std::vector<std::string>> tool_keywords_;
     std::string external_tool_defs_;
+    const ModelProfile* model_profile_ = nullptr;
 };
 
 } // namespace rastack

@@ -4,11 +4,18 @@
 
 namespace rcli {
 
+static std::string friendly_media_result(const std::string& action_name, const std::string& app) {
+    if (action_name == "play_pause_music") return "Toggled play pause on " + app;
+    if (action_name == "next_track") return "Skipped to next track on " + app;
+    if (action_name == "previous_track") return "Went back to previous track on " + app;
+    return action_name + " done on " + app;
+}
+
 static ActionResult media_control(const std::string& command, const std::string& action_name) {
     auto r = run_applescript("tell application \"Music\" to " + command);
-    if (r.success) return {true, action_name + " (Music.app)", "", "{\"action\": \"" + action_name + "\", \"app\": \"Music\"}"};
+    if (r.success) return {true, friendly_media_result(action_name, "Music"), "", "{\"action\": \"" + action_name + "\", \"app\": \"Music\"}"};
     auto r2 = run_applescript("tell application \"Spotify\" to " + command);
-    if (r2.success) return {true, action_name + " (Spotify)", "", "{\"action\": \"" + action_name + "\", \"app\": \"Spotify\"}"};
+    if (r2.success) return {true, friendly_media_result(action_name, "Spotify"), "", "{\"action\": \"" + action_name + "\", \"app\": \"Spotify\"}"};
     return {false, "", "No music app (Music or Spotify) is running", "{\"error\": \"no music app\"}"};
 }
 
@@ -53,11 +60,11 @@ static ActionResult action_get_now_playing(const std::string& args_json) {
         "    return \"Nothing playing\"\n"
         "  end if\n"
         "end tell");
-    if (r2.success) {
+    if (r2.success && r2.output.find("Nothing") == std::string::npos) {
         std::string info = trim_output(r2.output);
         return {true, "Now playing: " + info, "", "{\"action\": \"get_now_playing\", \"track\": \"" + escape_applescript(info) + "\"}"};
     }
-    return {true, "Nothing playing", "", "{\"action\": \"get_now_playing\", \"track\": \"none\"}"};
+    return {true, "Nothing playing right now", "", "{\"action\": \"get_now_playing\", \"track\": \"none\"}"};
 }
 
 static ActionResult action_play_on_spotify(const std::string& args_json) {
@@ -99,22 +106,6 @@ static ActionResult action_play_on_spotify(const std::string& args_json) {
     return {false, "", r.error, "{\"error\": \"" + r.error + "\"}"};
 }
 
-static ActionResult action_set_music_volume(const std::string& args_json) {
-    std::string level = json_get_string(args_json, "level");
-    if (level.empty())
-        return {false, "", "Volume level required (0-100)", "{\"error\": \"missing level\"}"};
-
-    auto r = run_applescript("tell application \"Spotify\" to set sound volume to " + level);
-    if (r.success)
-        return {true, "Spotify volume set to " + level, "",
-                "{\"action\": \"set_music_volume\", \"level\": " + level + ", \"app\": \"Spotify\"}"};
-
-    auto r2 = run_applescript("tell application \"Music\" to set sound volume to " + level);
-    if (r2.success)
-        return {true, "Music volume set to " + level, "",
-                "{\"action\": \"set_music_volume\", \"level\": " + level + ", \"app\": \"Music\"}"};
-    return {false, "", "No music app running", "{\"error\": \"no music app\"}"};
-}
 
 static ActionResult action_play_apple_music(const std::string& args_json) {
     std::string query = json_get_string(args_json, "query");
@@ -139,19 +130,19 @@ static ActionResult action_play_apple_music(const std::string& args_json) {
         return {true, "Playing " + trim_output(r.output) + " on Apple Music", "",
                 "{\"action\": \"play_apple_music\", \"query\": \"" + escape_applescript(query) + "\"}"};
 
-    // Fallback: open Apple Music web search
+    // Fallback: open Apple Music web search (not local playback)
     std::string url = "https://music.apple.com/search?term=" + url_encode(query);
-    run_shell("open '" + url + "'");
-    return {true, "Searching Apple Music for: " + query, "",
-            "{\"action\": \"play_apple_music\", \"query\": \"" + escape_applescript(query) + "\"}"};
+    run_shell("open '" + escape_shell(url) + "'");
+    return {true, "Could not find " + query + " in your library. Opened Apple Music search instead.", "",
+            "{\"action\": \"play_apple_music\", \"query\": \"" + escape_applescript(query) +
+            "\", \"fallback\": \"web_search\"}"};
 }
 
 void register_media_actions(ActionRegistry& registry) {
     registry.register_action(
         {"play_pause_music", "Play or pause music (Music.app or Spotify)",
          "{}",
-         {"play music", "pause music", "play pause", "resume music", "stop music",
-          "pause", "resume", "stop playing"},
+         true,
          "media",
          "Pause the music",
          "rcli action play_pause_music '{}'"},
@@ -160,7 +151,7 @@ void register_media_actions(ActionRegistry& registry) {
     registry.register_action(
         {"next_track", "Skip to the next track",
          "{}",
-         {"next track", "next song", "skip song", "skip track"},
+         true,
          "media",
          "Skip this song",
          "rcli action next_track '{}'"},
@@ -169,7 +160,7 @@ void register_media_actions(ActionRegistry& registry) {
     registry.register_action(
         {"previous_track", "Go to the previous track",
          "{}",
-         {"previous track", "previous song", "last song", "go back"},
+         false,
          "media",
          "Play the previous song",
          "rcli action previous_track '{}'"},
@@ -178,35 +169,25 @@ void register_media_actions(ActionRegistry& registry) {
     registry.register_action(
         {"get_now_playing", "Get the currently playing song and artist",
          "{}",
-         {"what's playing", "now playing", "current song", "what song"},
+         true,
          "media",
          "What song is playing?",
          "rcli action get_now_playing '{}'"},
         action_get_now_playing);
 
     registry.register_action(
-        {"play_on_spotify", "Play a song, artist, album, or playlist on Spotify",
-         "{\"query\": \"song/artist/album name\", \"type\": \"track|artist|album|playlist (optional)\"}",
-         {"play on spotify", "play spotify", "spotify play", "play song", "play artist",
-          "play album", "play playlist", "listen to", "put on", "spotify", "on spotify"},
+        {"play_on_spotify", "Search and play a specific song or artist on Spotify",
+         "{\"query\": \"song or artist name\"}",
+         true,
          "media",
          "Play Bohemian Rhapsody on Spotify",
          "rcli action play_on_spotify '{\"query\": \"Bohemian Rhapsody\"}'"},
         action_play_on_spotify);
 
     registry.register_action(
-        {"set_music_volume", "Set music app volume (separate from system volume)",
-         "{\"level\": \"0-100\"}",
-         {"music volume", "spotify volume", "player volume"},
-         "media",
-         "Set Spotify volume to 50",
-         "rcli action set_music_volume '{\"level\": \"50\"}'"},
-        action_set_music_volume);
-
-    registry.register_action(
         {"play_apple_music", "Play a song on Apple Music by name",
          "{\"query\": \"song or artist name\"}",
-         {"play on apple music", "apple music play", "play in music app", "play"},
+         false,
          "media",
          "Play Beatles on Apple Music",
          "rcli action play_apple_music '{\"query\": \"Beatles\"}'"},

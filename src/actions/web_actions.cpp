@@ -20,7 +20,7 @@ static ActionResult action_search_web(const std::string& args_json) {
     else
         url = "https://www.google.com/search?q=" + url_encode(query);
 
-    auto r = run_shell("open '" + url + "'");
+    auto r = run_shell("open '" + escape_shell(url) + "'");
     if (r.success) return {true, "Searching for: " + query, "",
         "{\"action\": \"search_web\", \"query\": \"" + escape_applescript(query) + "\"}"};
     return {false, "", r.error, "{\"error\": \"" + r.error + "\"}"};
@@ -31,7 +31,7 @@ static ActionResult action_search_youtube(const std::string& args_json) {
     if (query.empty()) return {false, "", "Search query required", "{\"error\": \"missing query\"}"};
 
     std::string url = "https://www.youtube.com/results?search_query=" + url_encode(query);
-    auto r = run_shell("open '" + url + "'");
+    auto r = run_shell("open '" + escape_shell(url) + "'");
     if (r.success) return {true, "Searching YouTube for: " + query, "",
         "{\"action\": \"search_youtube\", \"query\": \"" + escape_applescript(query) + "\"}"};
     return {false, "", r.error, "{\"error\": \"" + r.error + "\"}"};
@@ -39,10 +39,9 @@ static ActionResult action_search_youtube(const std::string& args_json) {
 
 void register_web_actions(ActionRegistry& registry) {
     registry.register_action(
-        {"search_web", "Search the web using Google (or DuckDuckGo/Bing)",
-         "{\"query\": \"search query\", \"engine\": \"optional: google|duckduckgo|bing\"}",
-         {"search", "google", "search the web", "search for", "look up", "search google", "web search",
-          "google search", "find online", "search online", "look it up", "search web"},
+        {"search_web", "Search the web using Google, DuckDuckGo, or Bing",
+         "{\"query\": \"search query\", \"engine\": \"google (default), duckduckgo, or bing\"}",
+         true,
          "web",
          "Google how to make sourdough bread",
          "rcli action search_web '{\"query\": \"how to make sourdough bread\"}'"},
@@ -51,8 +50,7 @@ void register_web_actions(ActionRegistry& registry) {
     registry.register_action(
         {"search_youtube", "Search YouTube for videos",
          "{\"query\": \"search query\"}",
-         {"youtube", "search youtube", "watch video", "find video", "play video",
-          "on youtube", "youtube video", "open youtube", "video of", "find on youtube"},
+         false,
          "web",
          "Search YouTube for guitar tutorials",
          "rcli action search_youtube '{\"query\": \"guitar tutorials\"}'"},
