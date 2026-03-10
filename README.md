@@ -110,6 +110,8 @@ Control your Mac by voice or text. The LLM routes intent to actions executed loc
 
 Run `rcli actions` to see all 43, or toggle them on/off in the TUI Actions panel.
 
+> **Tip:** If tool calling feels unreliable, press **X** in the TUI to clear the conversation and reset context. With small LLMs, accumulated context can degrade tool-calling accuracy — a fresh context often fixes it.
+
 ### RAG (Local Document Q&A)
 
 Index local documents, query them by voice. Hybrid vector + BM25 retrieval with ~4ms latency over 5K+ chunks. Supports PDF, DOCX, and plain text.
@@ -130,6 +132,7 @@ A terminal dashboard with push-to-talk, live hardware monitoring, model manageme
 | **A** | Actions — browse, enable/disable macOS actions |
 | **B** | Benchmarks — run STT, LLM, TTS, E2E benchmarks |
 | **R** | RAG — ingest documents |
+| **X** | Clear conversation and reset context |
 | **T** | Toggle tool call trace |
 | **ESC** | Stop / close / quit |
 
