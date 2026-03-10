@@ -43,9 +43,12 @@ bool Orchestrator::init(const PipelineConfig& config) {
             pool_->total_size() / (1024.0*1024.0),
             pool_->utilization_pct());
 
+    // llama.cpp STT/LLM/TTS — required for llamacpp/auto, optional for metalrt-only
+    bool need_llamacpp = (config.llm_backend != LlmBackend::METALRT);
+
     if (!stt_.init(config.stt)) {
-        LOG_ERROR("Pipeline", "STT init failed");
-        return false;
+        if (need_llamacpp) { LOG_ERROR("Pipeline", "STT init failed"); return false; }
+        LOG_WARN("Pipeline", "llama.cpp STT not available (MetalRT will handle STT)");
     }
 
     if (!offline_stt_.init(config.offline_stt)) {
@@ -53,13 +56,13 @@ bool Orchestrator::init(const PipelineConfig& config) {
     }
 
     if (!llm_.init(config.llm)) {
-        LOG_ERROR("Pipeline", "LLM init failed");
-        return false;
+        if (need_llamacpp) { LOG_ERROR("Pipeline", "LLM init failed"); return false; }
+        LOG_WARN("Pipeline", "llama.cpp LLM not available (MetalRT will handle LLM)");
     }
 
     if (!tts_.init(config.tts)) {
-        LOG_ERROR("Pipeline", "TTS init failed");
-        return false;
+        if (need_llamacpp) { LOG_ERROR("Pipeline", "TTS init failed"); return false; }
+        LOG_WARN("Pipeline", "llama.cpp TTS not available (MetalRT will handle TTS)");
     }
 
     if (!audio_.init(config.audio, capture_rb_.get(), playback_rb_.get())) {
@@ -72,13 +75,13 @@ bool Orchestrator::init(const PipelineConfig& config) {
     }
 
     tools_.register_defaults();
-    tools_.set_model_profile(&llm_.profile());
 
-    // Cache tool-aware system prompt (includes tool definitions) in KV cache.
-    // When external tool defs are set, they'll be included automatically.
-    std::string tool_system = llm_.profile().build_tool_system_prompt(
-        config.system_prompt, tools_.get_tool_definitions_json());
-    llm_.cache_system_prompt(tool_system);
+    if (llm_.is_initialized()) {
+        tools_.set_model_profile(&llm_.profile());
+        std::string tool_system = llm_.profile().build_tool_system_prompt(
+            config.system_prompt, tools_.get_tool_definitions_json());
+        llm_.cache_system_prompt(tool_system);
+    }
 
     // --- MetalRT backend (optional) ---
     if (config.llm_backend == LlmBackend::METALRT ||
