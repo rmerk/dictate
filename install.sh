@@ -10,7 +10,17 @@ ok()    { printf "\033[1;32m==>\033[0m %s\n" "$*"; }
 warn()  { printf "\033[1;33mWarning:\033[0m %s\n" "$*"; }
 fail()  { printf "\033[1;31mError:\033[0m %s\n" "$*" >&2; exit 1; }
 
-# Auto-detect latest release from GitHub API
+ENGINE_FLAG=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --engine)
+            ENGINE_FLAG="$2"; shift 2 ;;
+        --engine=*)
+            ENGINE_FLAG="${1#*=}"; shift ;;
+        *) shift ;;
+    esac
+done
+
 info "Checking latest RCLI release..."
 VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
     | grep '"tag_name"' \
@@ -71,4 +81,23 @@ fi
 ok "RCLI v${VERSION} installed successfully"
 echo ""
 info "Setting up AI models and engine (one-time)..."
-rcli setup
+
+if [[ -n "$ENGINE_FLAG" ]]; then
+    case "$ENGINE_FLAG" in
+        llamacpp|1)  echo "1" | rcli setup ;;
+        metalrt|2)   echo "2" | rcli setup ;;
+        both|3)      echo "3" | rcli setup ;;
+        *)
+            warn "Unknown engine '$ENGINE_FLAG'. Valid: llamacpp, metalrt, both"
+            rcli setup </dev/tty
+            ;;
+    esac
+else
+    # When piped (curl | bash), stdin is the pipe — redirect from /dev/tty
+    # so the user can interactively choose their engine.
+    if [[ -t 0 ]]; then
+        rcli setup
+    else
+        rcli setup </dev/tty
+    fi
+fi
