@@ -72,8 +72,39 @@ curl -fsSL https://raw.githubusercontent.com/RunanywhereAI/RCLI/main/install.sh 
 ```bash
 brew tap RunanywhereAI/rcli https://github.com/RunanywhereAI/RCLI.git
 brew install rcli
+rcli setup          # required — downloads AI models (~1GB, one-time)
+```
+
+**Upgrade to latest:**
+
+```bash
+brew update
+brew upgrade rcli
+```
+
+<details>
+<summary><strong>Troubleshooting: SHA256 mismatch or stale version</strong></summary>
+
+If `brew install` or `brew upgrade` fails with a checksum error:
+
+```bash
+# Force-refresh the tap to pick up the latest formula
+cd $(brew --repo RunanywhereAI/rcli) && git fetch origin && git reset --hard origin/main
+brew reinstall rcli
+```
+
+If that doesn't work, clean re-tap and clear the download cache:
+
+```bash
+brew untap RunanywhereAI/rcli
+rm -rf "$(brew --cache)/downloads/"*rcli*
+brew tap RunanywhereAI/rcli https://github.com/RunanywhereAI/RCLI.git
+brew install rcli
 rcli setup
 ```
+
+</details>
+
 ## Quick Start
 
 ```bash
