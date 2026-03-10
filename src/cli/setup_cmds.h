@@ -9,18 +9,25 @@
 #include "models/stt_model_registry.h"
 #include "engines/metalrt_loader.h"
 #include <dirent.h>
+#include <sys/statvfs.h>
+
+inline long long available_disk_mb(const std::string& path) {
+    struct statvfs vfs;
+    if (statvfs(path.c_str(), &vfs) != 0) {
+        std::string home = getenv("HOME") ? getenv("HOME") : "/tmp";
+        if (statvfs(home.c_str(), &vfs) != 0) return -1;
+    }
+    return (long long)vfs.f_bavail * vfs.f_frsize / (1024 * 1024);
+}
 
 inline int cmd_setup(const Args& args) {
     if (args.help) {
         fprintf(stderr,
-            "\n%s%s  rcli setup%s  —  Download AI models\n\n"
-            "  Downloads ~1GB of models to ~/Library/RCLI/models/:\n"
-            "    - Liquid LFM2 1.2B Tool LLM (731MB)\n"
-            "    - Zipformer streaming STT (~50MB)\n"
-            "    - Whisper base.en offline STT (~140MB)\n"
-            "    - Piper TTS voice (~60MB)\n"
-            "    - Silero VAD (~1MB)\n"
-            "    - Snowflake Arctic Embed S (RAG, ~34MB)\n\n",
+            "\n%s%s  rcli setup%s  —  Choose engine & download default models\n\n"
+            "  Installs default models only. Additional models on-demand via rcli models.\n\n"
+            "  MetalRT (~0.9GB):  LFM2.5 1.2B + Whisper Tiny + Kokoro TTS\n"
+            "  llama.cpp (~1GB):  LFM2 1.2B GGUF + Whisper + Piper TTS + RAG\n"
+            "  Both (~1.9GB):     All of the above\n\n",
             color::bold, color::orange, color::reset);
         return 0;
     }
@@ -28,13 +35,23 @@ inline int cmd_setup(const Args& args) {
     std::string models_dir = args.models_dir;
     fprintf(stderr, "\n%s%s  RCLI Setup%s\n\n", color::bold, color::orange, color::reset);
 
-    if (models_exist(models_dir)) {
-        fprintf(stderr, "  %s%sModels already downloaded%s at %s\n\n", color::bold, color::green, color::reset, models_dir.c_str());
-        fprintf(stderr, "  You're ready to go! Try:\n");
-        fprintf(stderr, "    rcli              # interactive mode\n");
-        fprintf(stderr, "    rcli listen       # voice mode\n");
-        fprintf(stderr, "    rcli actions      # see what's possible\n\n");
-        return 0;
+    bool has_llamacpp = false, has_metalrt = false;
+    {
+        struct stat st;
+        std::string lfm2  = models_dir + "/lfm2-1.2b-tool-q4_k_m.gguf";
+        std::string qwen3 = models_dir + "/qwen3-0.6b-q4_k_m.gguf";
+        has_llamacpp = (stat(lfm2.c_str(), &st) == 0 || stat(qwen3.c_str(), &st) == 0);
+
+        std::string home = getenv("HOME") ? getenv("HOME") : "/tmp";
+        std::string mrt = home + "/Library/RCLI/models/metalrt/lfm2.5-1.2b-4bit/model.safetensors";
+        has_metalrt = (stat(mrt.c_str(), &st) == 0);
+    }
+
+    if (has_llamacpp || has_metalrt) {
+        fprintf(stderr, "  Installed engines: ");
+        if (has_llamacpp) fprintf(stderr, "%sllama.cpp%s ", color::green, color::reset);
+        if (has_metalrt)  fprintf(stderr, "%sMetalRT%s ", color::cyan, color::reset);
+        fprintf(stderr, "\n\n");
     }
 
     // --- Engine choice ---
@@ -42,13 +59,14 @@ inline int cmd_setup(const Args& args) {
     fprintf(stderr, "  %s1%s  %sOpen Source%s (llama.cpp + sherpa-onnx)              ~1 GB\n",
             color::bold, color::reset, color::green, color::reset);
     fprintf(stderr, "     Community-maintained, all models supported.\n");
-    fprintf(stderr, "     Speed: ~180 tok/s (LFM2 1.2B)\n\n");
-    fprintf(stderr, "  %s2%s  %sMetalRT%s (Apple Silicon GPU acceleration)           ~1.5 GB\n",
+    fprintf(stderr, "     Downloads: LFM2 1.2B + Whisper + Piper TTS\n\n");
+    fprintf(stderr, "  %s2%s  %sMetalRT%s (Apple Silicon GPU acceleration)           ~0.9 GB\n",
             color::bold, color::reset, color::cyan, color::reset);
-    fprintf(stderr, "     Closed-source engine optimized for Metal GPU.\n");
-    fprintf(stderr, "     Speed: ~486 tok/s (Qwen3 0.6B), ~180 tok/s (Qwen3 4B)\n");
-    fprintf(stderr, "     Supports: Qwen3, Llama 3.2, LFM2.5\n\n");
-    fprintf(stderr, "  %s3%s  %sBoth%s (recommended)                                 ~2.5 GB\n",
+    fprintf(stderr, "     GPU-accelerated engine: ~550 tok/s (LFM2.5 1.2B)\n");
+    fprintf(stderr, "     Downloads: LFM2.5 1.2B + Whisper Tiny + Kokoro TTS\n");
+    fprintf(stderr, "     More models available on-demand via %srcli models%s\n\n",
+            color::bold, color::reset);
+    fprintf(stderr, "  %s3%s  %sBoth%s (recommended)                                 ~1.9 GB\n",
             color::bold, color::reset, color::orange, color::reset);
     fprintf(stderr, "     Install both engines. Use MetalRT when available,\n");
     fprintf(stderr, "     fall back to llama.cpp for unsupported models.\n\n");
@@ -71,6 +89,25 @@ inline int cmd_setup(const Args& args) {
 
     fprintf(stderr, "\n");
 
+    // Disk space check
+    int required_mb = 0;
+    if (install_metalrt && !has_metalrt) required_mb += 920;
+    if (install_llamacpp && !has_llamacpp) required_mb += 1050;
+    if (required_mb > 0) {
+        long long free_mb = available_disk_mb(models_dir);
+        if (free_mb >= 0 && free_mb < required_mb) {
+            fprintf(stderr, "  %s%sNot enough disk space.%s Need ~%dMB, only %lldMB available.\n",
+                    color::bold, color::red, color::reset, required_mb, free_mb);
+            fprintf(stderr, "  Free up space and run %srcli setup%s again.\n\n",
+                    color::bold, color::reset);
+            return 1;
+        }
+        if (free_mb >= 0) {
+            fprintf(stderr, "  %sDisk space: %lldMB free, ~%dMB required%s\n\n",
+                    color::dim, free_mb, required_mb, color::reset);
+        }
+    }
+
     // Install MetalRT binary if requested
     if (install_metalrt) {
         fprintf(stderr, "  %sInstalling MetalRT engine...%s\n", color::dim, color::reset);
@@ -84,11 +121,16 @@ inline int cmd_setup(const Args& args) {
         } else {
             fprintf(stderr, "  %s%sMetalRT installed!%s\n\n", color::bold, color::green, color::reset);
 
-            // Download default MetalRT LLM weights (LFM2.5 1.2B)
+            // Download default MetalRT LLM weights (LFM2.5 1.2B) — skip if exists
             auto all = rcli::all_models();
             for (auto& m : all) {
                 if (m.metalrt_id == "metalrt-lfm2.5-1.2b") {
                     std::string mrt_dir = rcli::metalrt_models_dir() + "/" + m.metalrt_dir_name;
+                    if (rcli::is_metalrt_model_installed(m)) {
+                        fprintf(stderr, "  %s%sMetalRT LLM already installed:%s %s\n",
+                                color::bold, color::green, color::reset, m.name.c_str());
+                        break;
+                    }
                     fprintf(stderr, "  %sDownloading MetalRT LLM: %s...%s\n", color::dim, m.name.c_str(), color::reset);
                     std::string config_url = m.metalrt_url;
                     auto pos = config_url.rfind("model.safetensors");
@@ -100,18 +142,33 @@ inline int cmd_setup(const Args& args) {
                         "curl -fL -# -o \"" + mrt_dir + "/config.json\" \"" + config_url + "\"; "
                         "'";
                     if (system(dl_cmd.c_str()) != 0) {
-                        fprintf(stderr, "  %s%sMetalRT LLM download failed.%s\n",
-                                color::bold, color::yellow, color::reset);
+                        long long free_after = available_disk_mb(mrt_dir);
+                        if (free_after >= 0 && free_after < 100) {
+                            fprintf(stderr, "  %s%sMetalRT LLM download failed — not enough disk space (%lldMB free).%s\n",
+                                    color::bold, color::red, free_after, color::reset);
+                            fprintf(stderr, "  Free up space and run %srcli setup%s again.\n",
+                                    color::bold, color::reset);
+                        } else {
+                            fprintf(stderr, "  %s%sMetalRT LLM download failed.%s Check your internet connection.\n",
+                                    color::bold, color::yellow, color::reset);
+                        }
                     }
                     break;
                 }
             }
 
-            // Download MetalRT STT/TTS component models (Whisper + Kokoro)
+            // Download default MetalRT STT/TTS models (Whisper Tiny + Kokoro)
+            // Other models (Whisper Small/Medium) available on-demand via rcli models
             auto comp = rcli::metalrt_component_models();
             for (auto& cm : comp) {
+                if (!cm.default_install) continue;
                 std::string cm_dir = rcli::metalrt_models_dir() + "/" + cm.dir_name;
-                if (rcli::is_metalrt_component_installed(cm)) continue;
+                if (rcli::is_metalrt_component_installed(cm)) {
+                    std::string skip_label = (cm.component == "stt") ? "STT" : "TTS";
+                    fprintf(stderr, "  %s%sMetalRT %s already installed:%s %s\n",
+                            color::bold, color::green, skip_label.c_str(), color::reset, cm.name.c_str());
+                    continue;
+                }
 
                 std::string type_label = (cm.component == "stt") ? "STT" : "TTS";
                 fprintf(stderr, "  %sDownloading MetalRT %s: %s (~%s)...%s\n",
@@ -120,6 +177,17 @@ inline int cmd_setup(const Args& args) {
 
                 std::string hf_base = "https://huggingface.co/" + cm.hf_repo + "/resolve/main/";
                 std::string subdir = cm.hf_subdir.empty() ? "" : cm.hf_subdir + "/";
+
+                auto report_dl_failure = [&](const std::string& label, const std::string& dir) {
+                    long long free_after = available_disk_mb(dir);
+                    if (free_after >= 0 && free_after < 100) {
+                        fprintf(stderr, "  %s%sMetalRT %s download failed — not enough disk space (%lldMB free).%s\n",
+                                color::bold, color::red, label.c_str(), free_after, color::reset);
+                    } else {
+                        fprintf(stderr, "  %s%sMetalRT %s download failed.%s Check your internet connection.\n",
+                                color::bold, color::yellow, label.c_str(), color::reset);
+                    }
+                };
 
                 if (cm.component == "tts") {
                     std::string dl_cmd = "bash -c '"
@@ -136,10 +204,7 @@ inline int cmd_setup(const Args& args) {
                         "done; "
                         "echo \"  Downloaded $(ls \"" + cm_dir + "/voices/\" | wc -l | tr -d \" \") voice files\"; "
                         "'";
-                    if (system(dl_cmd.c_str()) != 0) {
-                        fprintf(stderr, "  %s%sMetalRT %s download failed.%s\n",
-                                color::bold, color::yellow, type_label.c_str(), color::reset);
-                    }
+                    if (system(dl_cmd.c_str()) != 0) report_dl_failure(type_label, cm_dir);
                 } else {
                     std::string dl_cmd = "bash -c '"
                         "set -e; mkdir -p \"" + cm_dir + "\"; "
@@ -147,10 +212,7 @@ inline int cmd_setup(const Args& args) {
                         "curl -fL -# -o \"" + cm_dir + "/model.safetensors\" \"" + hf_base + subdir + "model.safetensors\"; "
                         "curl -fL -# -o \"" + cm_dir + "/tokenizer.json\" \"" + hf_base + subdir + "tokenizer.json\"; "
                         "'";
-                    if (system(dl_cmd.c_str()) != 0) {
-                        fprintf(stderr, "  %s%sMetalRT %s download failed.%s\n",
-                                color::bold, color::yellow, type_label.c_str(), color::reset);
-                    }
+                    if (system(dl_cmd.c_str()) != 0) report_dl_failure(type_label, cm_dir);
                 }
             }
         }
@@ -185,6 +247,16 @@ inline int cmd_setup(const Args& args) {
     }
 
     if (script_path.empty()) {
+        if (has_llamacpp) {
+            fprintf(stderr, "  %s%sllama.cpp models already installed.%s\n\n",
+                    color::bold, color::green, color::reset);
+            fprintf(stderr, "\n  %s%sSetup complete!%s\n\n", color::bold, color::green, color::reset);
+            fprintf(stderr, "  Get started:\n");
+            fprintf(stderr, "    rcli              # interactive mode\n");
+            fprintf(stderr, "    rcli listen       # voice mode\n");
+            fprintf(stderr, "    rcli models       # manage or download more models\n\n");
+            return 0;
+        }
         fprintf(stderr, "  Downloading models to %s ...\n\n", models_dir.c_str());
         auto all = rcli::all_models();
         const auto* default_llm = rcli::get_default_model(all);
@@ -235,8 +307,16 @@ inline int cmd_setup(const Args& args) {
             "'";
         int rc = system(cmd.c_str());
         if (rc != 0) {
-            fprintf(stderr, "\n  %s%sDownload failed.%s Check your internet connection and try again.\n\n",
-                    color::bold, color::red, color::reset);
+            long long free_after = available_disk_mb(models_dir);
+            if (free_after >= 0 && free_after < 200) {
+                fprintf(stderr, "\n  %s%sDownload failed — not enough disk space (%lldMB free).%s\n",
+                        color::bold, color::red, free_after, color::reset);
+                fprintf(stderr, "  Free up space and run %srcli setup%s again.\n\n",
+                        color::bold, color::reset);
+            } else {
+                fprintf(stderr, "\n  %s%sDownload failed.%s Check your internet connection and try again.\n\n",
+                        color::bold, color::red, color::reset);
+            }
             return 1;
         }
     } else {

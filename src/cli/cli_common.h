@@ -169,10 +169,15 @@ inline void signal_handler(int) { g_running = false; }
 
 inline bool models_exist(const std::string& dir) {
     struct stat st;
-    // Check for any known LLM model (default is LFM2, fallback to Qwen3)
     std::string check_lfm2  = dir + "/lfm2-1.2b-tool-q4_k_m.gguf";
     std::string check_qwen3 = dir + "/qwen3-0.6b-q4_k_m.gguf";
-    return stat(check_lfm2.c_str(), &st) == 0 || stat(check_qwen3.c_str(), &st) == 0;
+    if (stat(check_lfm2.c_str(), &st) == 0 || stat(check_qwen3.c_str(), &st) == 0)
+        return true;
+    // Check MetalRT default LLM model
+    std::string home = getenv("HOME") ? getenv("HOME") : "/tmp";
+    std::string mrt_lfm = home + "/Library/RCLI/models/metalrt/lfm2.5-1.2b-4bit/model.safetensors";
+    if (stat(mrt_lfm.c_str(), &st) == 0) return true;
+    return false;
 }
 
 inline void print_missing_models(const std::string& dir) {

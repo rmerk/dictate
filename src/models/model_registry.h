@@ -295,6 +295,7 @@ struct MetalRTComponentModel {
     int         size_mb;
     std::string description;
     std::string tokenizer_hf_repo;  // Separate repo for tokenizer.json (if not in hf_repo)
+    bool        default_install = true; // downloaded during initial setup; false = on-demand only
 };
 
 inline std::vector<MetalRTComponentModel> metalrt_component_models() {
@@ -309,6 +310,7 @@ inline std::vector<MetalRTComponentModel> metalrt_component_models() {
             40,
             "Fastest transcription, lower accuracy (~10% WER)",
             "",
+            true,
         },
         {
             "metalrt-whisper-small",
@@ -320,6 +322,7 @@ inline std::vector<MetalRTComponentModel> metalrt_component_models() {
             375,
             "Good balance of speed and accuracy (~5% WER)",
             "",
+            false,
         },
         {
             "metalrt-whisper-medium",
@@ -331,6 +334,7 @@ inline std::vector<MetalRTComponentModel> metalrt_component_models() {
             980,
             "Best accuracy, slower (~3% WER)",
             "",
+            false,
         },
         {
             "metalrt-kokoro-82m",
@@ -342,6 +346,7 @@ inline std::vector<MetalRTComponentModel> metalrt_component_models() {
             82,
             "Kokoro TTS for GPU-accelerated speech synthesis",
             "",
+            true,
         },
     };
 }
