@@ -1,10 +1,10 @@
 class Rcli < Formula
   desc "On-device voice AI for macOS — STT, LLM, TTS, 43 actions, and local RAG"
   homepage "https://github.com/RunanywhereAI/RCLI"
-  url "https://github.com/RunanywhereAI/RCLI/releases/download/v0.2.3/rcli-0.2.3-Darwin-arm64.tar.gz"
-  sha256 "4c24a637c4afceebf0eff978001f8f31c684f4020425db86dfe7268381c661c3"
+  url "https://github.com/RunanywhereAI/RCLI/releases/download/v0.2.5/rcli-0.2.5-Darwin-arm64.tar.gz"
+  sha256 "0e2f9cbdb4555070e75612db807ac1b662afc88f888ff78f6068325a16b6d79c"
   license "MIT"
-  version "0.2.3"
+  version "0.2.5"
 
   depends_on :macos
   depends_on arch: :arm64
@@ -28,8 +28,8 @@ class Rcli < Formula
         rcli ask "open Safari"  # one-shot voice command
 
       Engine options (selected during setup):
-        Open Source   llama.cpp + sherpa-onnx (~1 GB)
-        MetalRT       GPU-accelerated engine (~0.9 GB) — 550 tok/s
+        Open Source   llama.cpp + sherpa-onnx (~1 GB)   — all Apple Silicon
+        MetalRT       GPU-accelerated engine (~0.9 GB)  — M3+ only, 550 tok/s
         Both          recommended (~1.9 GB)
 
       MetalRT (GPU acceleration):
