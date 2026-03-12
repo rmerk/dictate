@@ -31,6 +31,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 
 #include "actions/action_registry.h"
 #include "actions/macos_actions.h"
@@ -631,7 +632,16 @@ int rcli_init(RCLIHandle handle, const char* models_dir, int gpu_layers) {
         engine->actions.get_definitions_json());
 
     LOG_DEBUG("RCLI", "Initializing pipeline...");
-    if (!engine->pipeline.init(config)) {
+    // Suppress sherpa-onnx's noisy stderr validation messages during init
+    // (model path probing prints errors for every path it tries).
+    int saved_stderr = dup(STDERR_FILENO);
+    {
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull >= 0) { dup2(devnull, STDERR_FILENO); close(devnull); }
+    }
+    bool init_ok = engine->pipeline.init(config);
+    if (saved_stderr >= 0) { dup2(saved_stderr, STDERR_FILENO); close(saved_stderr); }
+    if (!init_ok) {
         LOG_ERROR("RCLI", "Failed to initialize pipeline");
         return -1;
     }

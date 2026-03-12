@@ -129,31 +129,31 @@ static void test_actions() {
     // Test enable/disable
     TEST_SECTION("Action Enable/Disable");
     TEST("open_app is enabled by default", registry.is_enabled("open_app"));
-    TEST("screenshot is enabled by default", registry.is_enabled("screenshot"));
+    TEST("screenshot is NOT enabled by default", !registry.is_enabled("screenshot"));
 
     int initial_enabled = registry.num_enabled();
     TEST_INFO("Initially %d actions enabled", initial_enabled);
 
-    registry.set_enabled("screenshot", false);
-    TEST("screenshot disabled after set_enabled(false)", !registry.is_enabled("screenshot"));
-    TEST("num_enabled decreased", registry.num_enabled() == initial_enabled - 1);
-
     registry.set_enabled("open_app", false);
     TEST("open_app disabled after set_enabled(false)", !registry.is_enabled("open_app"));
+    TEST("num_enabled decreased", registry.num_enabled() == initial_enabled - 1);
+
+    registry.set_enabled("toggle_mute", false);
+    TEST("toggle_mute disabled after set_enabled(false)", !registry.is_enabled("toggle_mute"));
     TEST("num_enabled decreased by 2", registry.num_enabled() == initial_enabled - 2);
 
     // Test get_definitions_json filters by enabled
     std::string enabled_defs = registry.get_definitions_json();
     TEST("enabled defs does not contain open_app (disabled)", enabled_defs.find("open_app") == std::string::npos);
-    TEST("enabled defs does not contain screenshot (disabled)", enabled_defs.find("screenshot") == std::string::npos);
+    TEST("enabled defs does not contain toggle_mute (disabled)", enabled_defs.find("toggle_mute") == std::string::npos);
 
     std::string all_defs = registry.get_all_definitions_json();
     TEST("all defs contains open_app", all_defs.find("open_app") != std::string::npos);
-    TEST("all defs contains screenshot", all_defs.find("screenshot") != std::string::npos);
+    TEST("all defs contains toggle_mute", all_defs.find("toggle_mute") != std::string::npos);
 
     // Restore for remaining tests
     registry.set_enabled("open_app", true);
-    registry.set_enabled("screenshot", true);
+    registry.set_enabled("toggle_mute", true);
 
     auto enabled_list = registry.list_enabled_actions();
     TEST("list_enabled_actions returns entries", !enabled_list.empty());
