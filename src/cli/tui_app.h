@@ -790,7 +790,6 @@ private:
 
         double ttfa = last_ttfa_ms_.load(std::memory_order_relaxed);
 
-        // Engine indicator — use actual runtime engine, not config preference
         std::string engine_label_str = "llama.cpp";
         auto engine_color = theme_.text_normal;
         if (engine_) {
@@ -800,10 +799,6 @@ private:
             std::string engine_pref = rcli::read_engine_preference();
             if (engine_pref == "metalrt")
                 engine_label_str = "MetalRT";
-            else if (engine_pref == "auto" || engine_pref.empty()) {
-                bool mrt_avail = rastack::MetalRTLoader::instance().is_available();
-                engine_label_str = mrt_avail ? "Auto (MetalRT)" : "Auto (llama.cpp)";
-            }
         }
         bool is_metalrt_engine = engine_label_str.find("MetalRT") != std::string::npos;
         if (is_metalrt_engine)
@@ -1384,8 +1379,13 @@ private:
         auto stt_all = rcli::all_stt_models();
         auto tts_all = rcli::all_tts_models();
 
-        std::string engine_pref = rcli::read_engine_preference();
-        bool is_metalrt = (engine_pref == "metalrt");
+        bool is_metalrt = false;
+        if (engine_) {
+            const char* active = rcli_get_active_engine(engine_);
+            is_metalrt = active && std::string(active) == "MetalRT";
+        } else {
+            is_metalrt = (rcli::read_engine_preference() == "metalrt");
+        }
         std::string selected_model = rcli::read_selected_model_id();
 
         if (is_metalrt) {

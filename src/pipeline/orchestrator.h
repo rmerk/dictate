@@ -23,7 +23,7 @@
 
 namespace rastack {
 
-enum class LlmBackend { AUTO, LLAMACPP, METALRT };
+enum class LlmBackend { LLAMACPP, METALRT };
 
 struct PipelineConfig {
     SttConfig        stt;
@@ -36,7 +36,7 @@ struct PipelineConfig {
     VadConfig        vad;
     AudioConfig      audio;
 
-    LlmBackend       llm_backend = LlmBackend::AUTO;
+    LlmBackend       llm_backend = LlmBackend::LLAMACPP;
 
     size_t memory_pool_size    = 64 * 1024 * 1024;  // 64MB
     size_t audio_ring_capacity = 16384 * 10;         // ~10 sec at 16kHz

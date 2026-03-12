@@ -21,7 +21,7 @@
 
 namespace rcli {
 
-enum class LlmBackendType { LLAMACPP, METALRT, BOTH };
+enum class LlmBackendType { LLAMACPP, METALRT };
 
 struct LlmModelDef {
     std::string id;            // Unique slug: "qwen3.5-4b"
@@ -252,14 +252,13 @@ inline std::vector<LlmModelDef> all_models() {
 
 inline std::vector<LlmModelDef> models_for_engine(LlmBackendType engine) {
     auto all = all_models();
-    if (engine == LlmBackendType::LLAMACPP) return all;
     if (engine == LlmBackendType::METALRT) {
         std::vector<LlmModelDef> result;
         for (auto& m : all)
             if (m.metalrt_supported) result.push_back(m);
         return result;
     }
-    return all;  // BOTH: everything
+    return all;
 }
 
 inline std::string engine_label(const LlmModelDef& m) {

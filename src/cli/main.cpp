@@ -858,22 +858,14 @@ static int cmd_engine(const Args& args) {
         return 0;
     }
 
-    if (target == "auto") {
-        rcli::write_engine_preference("auto");
-        fprintf(stderr, "\n  %s%sEngine set to Auto.%s MetalRT when available, llama.cpp fallback.\n\n",
-                color::bold, color::green, color::reset);
-        return 0;
-    }
-
     std::string current = rcli::read_engine_preference();
-    if (current.empty()) current = "auto";
+    if (current.empty() || current == "auto") current = "llamacpp";
     fprintf(stderr,
         "\n%s%s  rcli engine%s  —  Switch LLM inference backend\n\n"
         "  Current: %s%s%s\n\n"
         "  Commands:\n"
         "    rcli engine metalrt    Use MetalRT (Apple Silicon GPU)\n"
-        "    rcli engine llamacpp   Use llama.cpp (open source)\n"
-        "    rcli engine auto       Auto-select best available\n\n",
+        "    rcli engine llamacpp   Use llama.cpp (open source)\n\n",
         color::bold, color::orange, color::reset,
         color::bold, current.c_str(), color::reset);
     return 0;

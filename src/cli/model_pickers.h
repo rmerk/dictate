@@ -590,8 +590,7 @@ inline int cmd_info() {
 
     std::string engine_pref = rcli::read_engine_preference();
     bool mrt_available = rastack::MetalRTLoader::instance().is_available();
-    bool use_metalrt = (engine_pref == "metalrt" && mrt_available)
-                    || ((engine_pref == "auto" || engine_pref.empty()) && mrt_available);
+    bool use_metalrt = (engine_pref == "metalrt" && mrt_available);
     std::string engine_info = use_metalrt
         ? "MetalRT (Metal GPU — LLM, STT, TTS on-device)"
         : "llama.cpp + sherpa-onnx (ONNX Runtime)";

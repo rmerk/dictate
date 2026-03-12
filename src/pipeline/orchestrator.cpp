@@ -100,7 +100,7 @@ bool Orchestrator::init(const PipelineConfig& config) {
             pool_->total_size() / (1024.0*1024.0),
             pool_->utilization_pct());
 
-    // llama.cpp STT/LLM/TTS — required for llamacpp/auto, optional for metalrt-only
+    // llama.cpp STT/LLM/TTS — required for llamacpp, optional for metalrt-only
     bool need_llamacpp = (config.llm_backend != LlmBackend::METALRT);
 
     if (!stt_.init(config.stt)) {
@@ -142,8 +142,7 @@ bool Orchestrator::init(const PipelineConfig& config) {
 
     // --- MetalRT backend (optional) ---
     bool metalrt_skip_due_to_crash = false;
-    if (config.llm_backend == LlmBackend::METALRT ||
-        config.llm_backend == LlmBackend::AUTO) {
+    if (config.llm_backend == LlmBackend::METALRT) {
         // Check if MetalRT crashed on a previous launch
         if (metalrt_previously_crashed()) {
             LOG_WARN("Pipeline", "MetalRT crashed on a previous launch — skipping. "
@@ -154,7 +153,7 @@ bool Orchestrator::init(const PipelineConfig& config) {
                     metalrt_crash_breadcrumb_path().c_str());
             metalrt_breadcrumb_remove();
             metalrt_skip_due_to_crash = true;
-            if (config.llm_backend == LlmBackend::METALRT && !llm_.is_initialized()) {
+            if (!llm_.is_initialized()) {
                 LOG_ERROR("Pipeline", "MetalRT skipped and llama.cpp LLM not available");
                 return false;
             }
@@ -179,11 +178,9 @@ bool Orchestrator::init(const PipelineConfig& config) {
                 std::string mrt_prefix = metalrt_.profile().build_system_prefix(mrt_system);
                 metalrt_.cache_system_prompt(mrt_prefix);
                 metalrt_.set_system_prompt(mrt_system);
-                if (config.llm_backend == LlmBackend::METALRT) {
-                    active_backend_ = LlmBackend::METALRT;
-                    LOG_INFO("Pipeline", "Active LLM backend: MetalRT");
-                }
-            } else if (config.llm_backend == LlmBackend::METALRT) {
+                active_backend_ = LlmBackend::METALRT;
+                LOG_INFO("Pipeline", "Active LLM backend: MetalRT");
+            } else {
                 metalrt_breadcrumb_remove();
                 sigaction(SIGSEGV, &s_old_sigsegv, nullptr);
                 sigaction(SIGBUS, &s_old_sigbus, nullptr);

@@ -97,9 +97,8 @@ inline int cmd_setup(const Args& args) {
     bool install_llamacpp = (engine_choice == 1 || engine_choice == 3);
     bool install_metalrt  = (engine_choice == 2 || engine_choice == 3);
 
-    std::string engine_pref = "auto";
+    std::string engine_pref = "metalrt";
     if (engine_choice == 1) engine_pref = "llamacpp";
-    if (engine_choice == 2) engine_pref = "metalrt";
     rcli::write_engine_preference(engine_pref);
 
     fprintf(stderr, "\n");
@@ -518,8 +517,8 @@ inline int cmd_upgrade_llm(const Args& args) {
     const auto* current_best = rcli::find_best_installed(models_dir, models);
 
     fprintf(stderr, "\n%s%s  RCLI — Upgrade Language Model%s\n\n", color::bold, color::orange, color::reset);
-    if (engine_pref == "auto" || engine_pref.empty()) {
-        fprintf(stderr, "  Engine: auto (llama.cpp). Tip: switch to MetalRT with %srcli setup%s for GPU speed.\n\n",
+    if (engine_pref.empty()) {
+        fprintf(stderr, "  Tip: switch to MetalRT with %srcli setup%s for GPU speed.\n\n",
                 color::bold, color::reset);
     }
     fprintf(stderr, "  Choose a model to download for smarter voice commands.\n");
