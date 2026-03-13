@@ -107,6 +107,7 @@ add_library(rcli STATIC
     src/audio/audio_io.cpp
     src/audio/mic_permission.mm
     src/audio/camera_capture.mm
+    src/audio/screen_capture.mm
     src/pipeline/orchestrator.cpp
     src/pipeline/sentence_detector.cpp
     src/tools/tool_engine.cpp
@@ -139,7 +140,7 @@ add_library(rcli STATIC
     src/api/rcli_api.cpp
 )
 
-set_source_files_properties(src/audio/mic_permission.mm src/audio/camera_capture.mm
+set_source_files_properties(src/audio/mic_permission.mm src/audio/camera_capture.mm src/audio/screen_capture.mm
     PROPERTIES LANGUAGE CXX)
 
 target_include_directories(rcli PUBLIC
@@ -165,6 +166,7 @@ target_link_libraries(rcli PUBLIC
     "-framework CoreImage"
     "-framework CoreMedia"
     "-framework CoreVideo"
+    "-framework CoreGraphics"
     "-framework IOKit"
 )
 
@@ -196,6 +198,27 @@ target_compile_options(rcli_cli PRIVATE
 
 target_compile_definitions(rcli_cli PRIVATE
     RCLI_VERSION="${PROJECT_VERSION}"
+)
+
+# =============================================================================
+# rcli_overlay — standalone Cocoa helper for visual overlay window
+# =============================================================================
+add_executable(rcli_overlay
+    src/audio/rcli_overlay.m
+)
+
+set_source_files_properties(src/audio/rcli_overlay.m PROPERTIES LANGUAGE CXX)
+
+target_compile_options(rcli_overlay PRIVATE -x objective-c++)
+
+target_link_libraries(rcli_overlay PRIVATE
+    "-framework AppKit"
+    "-framework CoreGraphics"
+)
+
+set_target_properties(rcli_overlay PROPERTIES
+    OUTPUT_NAME "rcli_overlay"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
 
 # =============================================================================
