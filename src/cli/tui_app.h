@@ -14,9 +14,13 @@
 #include "engines/metalrt_loader.h"
 #include "engines/vlm_engine.h"
 #include "audio/camera_capture.h"
+#include "audio/screen_capture.h"
 #include "models/vlm_model_registry.h"
 #include "core/log.h"
 #include "core/personality.h"
+#include <spawn.h>
+
+extern char** environ;
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
@@ -438,6 +442,17 @@ public:
                 // V key: capture photo from camera and analyze with VLM
                 if (c == "v" || c == "V") {
                     run_camera_vlm("Describe what you see in this photo in detail.");
+                    return true;
+                }
+                // S key: toggle visual mode (overlay frame for screen capture)
+                if (c == "s" || c == "S") {
+                    if (screen_capture_overlay_active()) {
+                        screen_capture_hide_overlay();
+                        add_system_message("Visual mode OFF");
+                    } else {
+                        screen_capture_show_overlay(0, 0, 0, 0);
+                        add_system_message("Visual mode ON — drag/resize the green frame over content, then ask a question");
+                    }
                     return true;
                 }
                 if (c == "t" || c == "T") {
@@ -1077,6 +1092,10 @@ private:
             right.push_back(text("[A] actions  ") | dim);
         right.push_back(text("[C] convo  ") | dim);
         right.push_back(text("[V] camera  ") | dim);
+        if (screen_capture_overlay_active())
+            right.push_back(text("[S] visual ●  ") | ftxui::color(ftxui::Color::Green));
+        else
+            right.push_back(text("[S] visual  ") | dim);
         right.push_back(text("[R] RAG  ") | dim);
         right.push_back(text("[P] personality  ") | dim);
         right.push_back(text("[D] cleanup  ") | dim);
@@ -2208,6 +2227,10 @@ private:
                 engine_, photo_path.c_str(), prompt_copy.c_str());
             if (response && response[0]) {
                 add_response(response, "VLM");
+                // Speak the VLM response
+                voice_state_ = VoiceState::SPEAKING;
+                screen_->Post(Event::Custom);
+                rcli_speak(engine_, response);
                 // Show performance stats
                 RCLIVlmStats stats;
                 if (rcli_vlm_get_stats(engine_, &stats) == 0) {
@@ -2221,7 +2244,53 @@ private:
             }
             voice_state_ = VoiceState::IDLE;
             // Open the captured photo in Preview
-            system(("open '" + photo_path + "' &").c_str());
+            {
+                pid_t pid;
+                const char* argv[] = {"open", photo_path.c_str(), nullptr};
+                posix_spawnp(&pid, "open", nullptr, nullptr,
+                             const_cast<char* const*>(argv), environ);
+            }
+            screen_->Post(Event::Custom);
+        }).detach();
+    }
+
+    void run_screen_vlm(const std::string& prompt) {
+        char app_name[256];
+        screen_capture_target_app_name(app_name, sizeof(app_name));
+        add_system_message(std::string("Capturing screenshot of ") + app_name + "...");
+        voice_state_ = VoiceState::THINKING;
+        std::string prompt_copy = prompt;
+        std::thread([this, prompt_copy]() {
+            std::string screen_path = "/tmp/rcli_screen_" +
+                std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ".jpg";
+            int rc = screen_capture_screenshot(screen_path.c_str());
+            if (rc != 0) {
+                add_response("(Screen capture failed. Check screen recording permissions in System Settings > Privacy & Security > Screen Recording.)", "");
+                voice_state_ = VoiceState::IDLE;
+                screen_->Post(Event::Custom);
+                return;
+            }
+            add_system_message("Screenshot captured! Analyzing with VLM...");
+            screen_->Post(Event::Custom);
+            const char* response = rcli_vlm_analyze(
+                engine_, screen_path.c_str(), prompt_copy.c_str());
+            if (response && response[0]) {
+                add_response(response, "VLM");
+                // Speak via sentence-streamed TTS through ring buffer
+                voice_state_ = VoiceState::SPEAKING;
+                screen_->Post(Event::Custom);
+                rcli_speak_streaming(engine_, response, nullptr, nullptr);
+                RCLIVlmStats stats;
+                if (rcli_vlm_get_stats(engine_, &stats) == 0) {
+                    char buf[128];
+                    snprintf(buf, sizeof(buf), "⚡ %.1f tok/s  |  %d tokens  |  %.1fs total",
+                             stats.gen_tok_per_sec, stats.generated_tokens, stats.total_time_sec);
+                    add_system_message(buf);
+                }
+            } else {
+                add_response("(VLM analysis failed. Install a VLM model: rcli models vlm)", "");
+            }
+            voice_state_ = VoiceState::IDLE;
             screen_->Post(Event::Custom);
         }).detach();
     }
@@ -2282,6 +2351,22 @@ private:
 
         if (cmd == "actions") {
             enter_actions_mode();
+            return;
+        }
+
+        if (cmd == "visual") {
+            if (screen_capture_overlay_active()) {
+                screen_capture_hide_overlay();
+                add_system_message("Visual mode OFF");
+            } else {
+                screen_capture_show_overlay(0, 0, 0, 0);
+                add_system_message("Visual mode ON — drag/resize the green frame, then ask a question");
+            }
+            return;
+        }
+
+        if (cmd == "screen" || cmd == "screenshot") {
+            run_screen_vlm("Describe what you see on this screen in detail.");
             return;
         }
 
