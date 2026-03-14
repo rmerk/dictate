@@ -1,42 +1,83 @@
-// rcli_overlay — tiny standalone Cocoa app that shows a draggable/resizable
-// green-bordered transparent overlay.  Communicates with the parent RCLI
-// process via stdin (commands) and stdout (responses).
+// rcli_overlay — standalone Cocoa app showing a draggable/resizable overlay
+// frame for screen capture. Communicates with parent RCLI via stdin/stdout.
 //
 // Commands (one per line on stdin):
 //   frame   → replies "x,y,w,h\n" (screen coords, top-left origin)
 //   hide    → sets alpha to 0 (for capture)
 //   show    → restores alpha to 1
 //   quit    → exits
-//
-// Compile: clang -framework AppKit -framework CoreGraphics -o rcli_overlay rcli_overlay.m
 
 #import <AppKit/AppKit.h>
 
-// ── Custom view: green dashed border + label ──────────────────────────
+static const CGFloat kBorder    = 6.0;
+static const CGFloat kRadius    = 12.0;
+static const CGFloat kHandle    = 18.0;   // corner handle size
+static const CGFloat kEdgeGrab  = 14.0;   // invisible edge grab zone
+
+// ── Custom view: bold border + corner handles + label pill ─────────────
 @interface OverlayView : NSView
 @end
 
 @implementation OverlayView
+
 - (void)drawRect:(NSRect)dirtyRect {
     [[NSColor clearColor] set];
     NSRectFill(dirtyRect);
 
-    NSBezierPath *border = [NSBezierPath bezierPathWithRect:
-        NSInsetRect(self.bounds, 3, 3)];
-    [border setLineWidth:4.0];
-    CGFloat dash[] = {10, 5};
-    [border setLineDash:dash count:2 phase:0];
-    [[NSColor colorWithRed:0.0 green:1.0 blue:0.4 alpha:0.9] set];
+    NSRect inner = NSInsetRect(self.bounds, kBorder, kBorder);
+    NSColor *green = [NSColor colorWithRed:0.15 green:0.9 blue:0.45 alpha:0.92];
+
+    // Outer glow
+    NSBezierPath *glow = [NSBezierPath bezierPathWithRoundedRect:inner
+                                                         xRadius:kRadius yRadius:kRadius];
+    [glow setLineWidth:kBorder + 6];
+    [[green colorWithAlphaComponent:0.12] set];
+    [glow stroke];
+
+    // Main border — solid, thick, rounded
+    NSBezierPath *border = [NSBezierPath bezierPathWithRoundedRect:inner
+                                                           xRadius:kRadius yRadius:kRadius];
+    [border setLineWidth:kBorder];
+    [green set];
     [border stroke];
 
-    NSDictionary *attrs = @{
-        NSFontAttributeName: [NSFont boldSystemFontOfSize:12],
-        NSForegroundColorAttributeName:
-            [NSColor colorWithRed:0.0 green:1.0 blue:0.4 alpha:0.9],
+    // Corner handles — filled rounded squares with white dot
+    CGFloat hs = kHandle;
+    CGFloat off = kBorder / 2;
+    NSRect corners[4] = {
+        NSMakeRect(NSMinX(inner) - off, NSMinY(inner) - off, hs, hs),
+        NSMakeRect(NSMaxX(inner) + off - hs, NSMinY(inner) - off, hs, hs),
+        NSMakeRect(NSMinX(inner) - off, NSMaxY(inner) + off - hs, hs, hs),
+        NSMakeRect(NSMaxX(inner) + off - hs, NSMaxY(inner) + off - hs, hs, hs),
     };
-    [@" RCLI Visual Mode " drawAtPoint:NSMakePoint(10, self.bounds.size.height - 22)
-                        withAttributes:attrs];
+    for (int i = 0; i < 4; i++) {
+        NSBezierPath *h = [NSBezierPath bezierPathWithRoundedRect:corners[i]
+                                                          xRadius:4 yRadius:4];
+        [green set];
+        [h fill];
+        // White center dot
+        NSRect dot = NSInsetRect(corners[i], 5, 5);
+        [[NSColor colorWithWhite:1.0 alpha:0.85] set];
+        [[NSBezierPath bezierPathWithOvalInRect:dot] fill];
+    }
+
+    // Label pill — centered at top
+    NSString *label = @"  RCLI Visual Mode  ";
+    NSDictionary *attrs = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:11 weight:NSFontWeightBold],
+        NSForegroundColorAttributeName: [NSColor blackColor],
+    };
+    NSSize sz = [label sizeWithAttributes:attrs];
+    CGFloat px = NSMidX(self.bounds) - sz.width / 2 - 6;
+    CGFloat py = NSMaxY(inner) - 2;
+    NSRect pill = NSMakeRect(px, py, sz.width + 12, sz.height + 6);
+    NSBezierPath *pillPath = [NSBezierPath bezierPathWithRoundedRect:pill
+                                                             xRadius:10 yRadius:10];
+    [green set];
+    [pillPath fill];
+    [label drawAtPoint:NSMakePoint(px + 6, py + 3) withAttributes:attrs];
 }
+
 - (BOOL)acceptsFirstMouse:(NSEvent *)e { return YES; }
 @end
 
@@ -60,6 +101,7 @@
         self.contentView = [[OverlayView alloc] initWithFrame:rect];
         self.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
                                   NSWindowCollectionBehaviorStationary;
+        self.minSize = NSMakeSize(120, 80);
     }
     return self;
 }
@@ -87,7 +129,6 @@
                                    withObject:cmd
                                 waitUntilDone:YES];
         }
-        // stdin closed — parent died, exit gracefully
         dispatch_async(dispatch_get_main_queue(), ^{
             [NSApp terminate:nil];
         });
@@ -97,7 +138,6 @@
 - (void)handleCommand:(NSString *)cmd {
     if ([cmd isEqualToString:@"frame"]) {
         NSRect f = self.window.frame;
-        // Convert to top-left origin (Cocoa uses bottom-left)
         CGFloat screenH = [NSScreen mainScreen].frame.size.height;
         int x = (int)f.origin.x;
         int y = (int)(screenH - f.origin.y - f.size.height);
@@ -107,7 +147,6 @@
         fflush(stdout);
     } else if ([cmd isEqualToString:@"hide"]) {
         [self.window setAlphaValue:0.0];
-        // Small delay for window server
         [NSThread sleepForTimeInterval:0.05];
         printf("ok\n");
         fflush(stdout);
@@ -128,7 +167,6 @@ int main(int argc, const char *argv[]) {
         NSApplication *app = [NSApplication sharedApplication];
         [app setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
-        // Default: 800×600 centered
         NSScreen *scr = [NSScreen mainScreen];
         NSRect sf = scr.frame;
         CGFloat w = 800, h = 600;
@@ -144,7 +182,6 @@ int main(int argc, const char *argv[]) {
         reader.window = win;
         [reader startReading];
 
-        // Signal parent that we're ready
         printf("ready\n");
         fflush(stdout);
 
