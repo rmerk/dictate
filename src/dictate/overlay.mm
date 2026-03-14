@@ -171,9 +171,12 @@ void overlay_show(OverlayState state, std::optional<ScreenPoint> position) {
     g_overlayView.state = state;
 
     if (position.has_value()) {
-        // Place near caret with offset
+        // Place near caret with offset.
+        // AX coordinates use top-left origin; AppKit uses bottom-left origin.
+        // Convert: cocoa_y = screen_height - ax_y - window_height
+        CGFloat screenHeight = [NSScreen mainScreen].frame.size.height;
         CGFloat x = position->x + 8.0;
-        CGFloat y = position->y - 24.0;
+        CGFloat y = screenHeight - position->y - 48.0;
         [g_overlayWindow setFrameOrigin:NSMakePoint(x, y)];
     } else {
         // Top-right corner of main screen

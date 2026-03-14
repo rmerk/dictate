@@ -1,5 +1,7 @@
 #pragma once
 #include <string>
+#include <signal.h>
+#include <unistd.h>
 
 namespace rcli {
 
@@ -37,8 +39,12 @@ int daemon_install_launchd(const char* rcli_path);
 // Returns 0 on success, -1 on error.
 int daemon_uninstall_launchd();
 
-// Register SIGTERM handler for graceful shutdown.
-// cleanup_fn is called before exit.
+// Register SIGTERM/SIGINT handler for graceful shutdown.
+// The handler sets a flag and stops the main run loop.
+// After CFRunLoopRun() returns, caller should check daemon_should_quit() and cleanup.
 void daemon_register_signal_handler(void (*cleanup_fn)());
+
+// Returns non-zero if a signal has been received and the daemon should quit.
+int daemon_should_quit();
 
 } // namespace rcli

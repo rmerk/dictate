@@ -5,7 +5,6 @@
 #import <ApplicationServices/ApplicationServices.h>
 
 #include <unistd.h>
-#include <cstdlib>
 #include <atomic>
 #include <string>
 
@@ -37,17 +36,6 @@ void simulate_paste() {
 }
 
 namespace {
-
-// Escape double-quotes and backslashes for osascript string
-std::string escape_applescript(const std::string& s) {
-    std::string out;
-    out.reserve(s.size() + 16);
-    for (char c : s) {
-        if (c == '"' || c == '\\') out += '\\';
-        out += c;
-    }
-    return out;
-}
 
 std::atomic<bool> g_notification_authorized{false};
 std::atomic<bool> g_notification_checked{false};
@@ -90,13 +78,17 @@ void send_notification(const std::string& title, const std::string& body) {
                                                      trigger:nil];
             [center addNotificationRequest:request withCompletionHandler:nil];
         } else {
-            // Fallback: osascript
-            std::string cmd = "osascript -e 'display notification \""
-                + escape_applescript(body)
-                + "\" with title \""
-                + escape_applescript(title)
-                + "\"' &";
-            system(cmd.c_str());
+            // Fallback: NSAppleScript (avoids shell injection from transcript text)
+            NSString *script = [NSString stringWithFormat:
+                @"display notification %@ with title %@",
+                [NSString stringWithFormat:@"\"%@\"",
+                    [[NSString stringWithUTF8String:body.c_str()]
+                        stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""]],
+                [NSString stringWithFormat:@"\"%@\"",
+                    [[NSString stringWithUTF8String:title.c_str()]
+                        stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""]]];
+            NSAppleScript *appleScript = [[NSAppleScript alloc] initWithSource:script];
+            [appleScript executeAndReturnError:nil];
         }
     }
 }

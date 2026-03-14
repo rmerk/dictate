@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include <spawn.h>
 #include <fcntl.h>
+#include <sys/wait.h>
+#include <CoreFoundation/CoreFoundation.h>
 
 extern char** environ;
 
@@ -206,12 +208,22 @@ int daemon_install_launchd(const char* rcli_path) {
     ofs << plist;
     ofs.close();
 
-    // Load via launchctl
-    std::string cmd = "launchctl load " + plist_path;
-    int ret = system(cmd.c_str());
-    if (ret != 0) {
-        fprintf(stderr, "daemon: launchctl load failed (%d)\n", ret);
-        return -1;
+    // Load via launchctl (using posix_spawn to avoid shell injection)
+    {
+        const char* lctl_argv[] = {"/bin/launchctl", "load", plist_path.c_str(), nullptr};
+        pid_t lctl_pid = 0;
+        int err = posix_spawn(&lctl_pid, "/bin/launchctl", nullptr, nullptr,
+                              const_cast<char* const*>(lctl_argv), environ);
+        if (err != 0) {
+            fprintf(stderr, "daemon: launchctl load failed: %s\n", strerror(err));
+            return -1;
+        }
+        int status = 0;
+        waitpid(lctl_pid, &status, 0);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            fprintf(stderr, "daemon: launchctl load exited with error\n");
+            return -1;
+        }
     }
 
     return 0;
@@ -221,8 +233,16 @@ int daemon_uninstall_launchd() {
     std::string plist_path = daemon_plist_path();
 
     // Unload from launchd (ignore errors if not loaded)
-    std::string cmd = "launchctl unload " + plist_path + " 2>/dev/null";
-    system(cmd.c_str());
+    {
+        const char* lctl_argv[] = {"/bin/launchctl", "unload", plist_path.c_str(), nullptr};
+        pid_t lctl_pid = 0;
+        int err = posix_spawn(&lctl_pid, "/bin/launchctl", nullptr, nullptr,
+                              const_cast<char* const*>(lctl_argv), environ);
+        if (err == 0) {
+            int status = 0;
+            waitpid(lctl_pid, &status, 0);
+        }
+    }
 
     // Remove plist file
     unlink(plist_path.c_str());
@@ -239,17 +259,21 @@ int daemon_uninstall_launchd() {
 // Signal handling
 // ---------------------------------------------------------------------------
 
-static void (*g_cleanup_fn)() = nullptr;
+static volatile sig_atomic_t g_should_quit = 0;
 
 static void signal_handler(int /*sig*/) {
-    if (g_cleanup_fn) {
-        g_cleanup_fn();
-    }
-    _exit(0);
+    g_should_quit = 1;
+    // CFRunLoopStop is documented as safe to call from a signal handler
+    CFRunLoopStop(CFRunLoopGetMain());
 }
 
-void daemon_register_signal_handler(void (*cleanup_fn)()) {
-    g_cleanup_fn = cleanup_fn;
+int daemon_should_quit() {
+    return g_should_quit;
+}
+
+void daemon_register_signal_handler(void (*/*cleanup_fn*/)()) {
+    // cleanup_fn is no longer called from the signal handler (not async-signal-safe).
+    // Instead, the run loop checks daemon_should_quit() and calls cleanup normally.
     signal(SIGTERM, signal_handler);
     signal(SIGINT, signal_handler);
 }

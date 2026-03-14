@@ -8,8 +8,10 @@
 #include "../api/rcli_api.h"
 #include "../audio/mic_permission.h"
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <CoreFoundation/CoreFoundation.h>
+#include <dispatch/dispatch.h>
 
 static RCLIHandle g_dictate_engine = nullptr;
 static bool g_dictate_recording = false;
@@ -34,12 +36,16 @@ static void on_hotkey() {
     } else {
         g_dictate_recording = false;
         rcli::overlay_set_state(rcli::OverlayState::Transcribing);
-        const char* transcript = rcli_stop_capture_and_transcribe(g_dictate_engine);
-
-        if (transcript && strlen(transcript) > 0) {
-            rcli::dictation_output(transcript, g_dictate_config.paste, g_dictate_config.notification);
-        }
-        rcli::overlay_dismiss();
+        // Transcription is CPU-intensive — run on background queue to keep overlay animating
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            const char* transcript = rcli_stop_capture_and_transcribe(g_dictate_engine);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (transcript && strlen(transcript) > 0) {
+                    rcli::dictation_output(transcript, g_dictate_config.paste, g_dictate_config.notification);
+                }
+                rcli::overlay_dismiss();
+            });
+        });
     }
 }
 
@@ -53,7 +59,7 @@ static int run_foreground(const Args& args) {
         request_mic_permission();
     }
 
-    std::string config_path = args.models_dir + "/../config";
+    std::string config_path = std::string(getenv("HOME") ? getenv("HOME") : "/tmp") + "/Library/RCLI/config";
     g_dictate_config = rcli::load_dictate_config(config_path);
 
     g_dictate_engine = rcli_create(nullptr);
@@ -67,7 +73,7 @@ static int run_foreground(const Args& args) {
         return 1;
     }
 
-    rcli::daemon_register_signal_handler(cleanup);
+    rcli::daemon_register_signal_handler(nullptr);
     rcli::daemon_write_pid();
 
     rcli::overlay_init();
@@ -79,8 +85,10 @@ static int run_foreground(const Args& args) {
 
     printf("rcli dictate running. Hotkey: %s. Press Ctrl+C to stop.\n", g_dictate_config.hotkey.c_str());
 
+    // Run the event loop. Signal handler sets flag and calls CFRunLoopStop.
     CFRunLoopRun();
 
+    // Cleanup runs here on the main thread (async-signal-safe pattern)
     cleanup();
     return 0;
 }
@@ -122,7 +130,7 @@ int cmd_dictate(const Args& args) {
         return rcli::daemon_uninstall_launchd();
     }
     if (args.arg1 == "config") {
-        std::string config_path = args.models_dir + "/../config";
+        std::string config_path = std::string(getenv("HOME") ? getenv("HOME") : "/tmp") + "/Library/RCLI/config";
         auto cfg = rcli::load_dictate_config(config_path);
         printf("Current dictation config:\n");
         printf("  hotkey:       %s\n", cfg.hotkey.c_str());
