@@ -135,6 +135,8 @@ void overlay_init() {
     // Ensure NSApplication exists (needed for NSWindow even in CLI apps)
     if (NSApp == nil) {
         [NSApplication sharedApplication];
+        // Accessory mode: no Dock icon, doesn't steal focus from frontmost app
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     }
 
     const CGFloat size = 48.0;

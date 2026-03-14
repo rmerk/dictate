@@ -174,7 +174,6 @@ target_link_libraries(rcli PUBLIC
     "-framework ApplicationServices"
     "-framework Carbon"
     "-framework AppKit"
-    "-framework UserNotifications"
 )
 
 if(GGML_METAL)
