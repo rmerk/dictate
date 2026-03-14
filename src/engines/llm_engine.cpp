@@ -35,6 +35,12 @@ void LlmEngine::shutdown() {
 bool LlmEngine::init(const LlmConfig& config) {
     if (initialized_) shutdown();
 
+    // Skip init entirely if no model path provided (e.g., STT-only mode)
+    if (config.model_path.empty()) {
+        LOG_DEBUG("LLM", "No model path — skipping init");
+        return false;
+    }
+
     config_ = config;
 
     // Initialize backend (loads Metal, etc.)

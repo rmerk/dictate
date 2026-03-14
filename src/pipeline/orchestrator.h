@@ -37,6 +37,7 @@ struct PipelineConfig {
     AudioConfig      audio;
 
     LlmBackend       llm_backend = LlmBackend::LLAMACPP;
+    bool             stt_only    = false;  // STT+VAD only (dictation mode — skip LLM/TTS)
 
     size_t memory_pool_size    = 64 * 1024 * 1024;  // 64MB
     size_t audio_ring_capacity = 16384 * 10;         // ~10 sec at 16kHz

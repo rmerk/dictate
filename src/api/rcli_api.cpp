@@ -663,6 +663,9 @@ int rcli_init_stt_only(RCLIHandle handle, const char* models_dir, int gpu_layers
 
     PipelineConfig config;
 
+    // STT-only mode: skip LLM, TTS, MetalRT entirely in orchestrator
+    config.stt_only = true;
+
     // --- STT (Zipformer streaming — always active for live mic) ---
     config.stt.encoder_path = dir + "/zipformer/encoder-epoch-99-avg-1.int8.onnx";
     config.stt.decoder_path = dir + "/zipformer/decoder-epoch-99-avg-1.int8.onnx";

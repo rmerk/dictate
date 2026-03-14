@@ -112,6 +112,19 @@ bool Orchestrator::init(const PipelineConfig& config) {
         LOG_WARN("Pipeline", "Offline STT init failed (will use streaming STT)");
     }
 
+    // STT-only mode: skip LLM, TTS, MetalRT, tools — just STT + VAD + audio
+    if (config.stt_only) {
+        if (!audio_.init(config.audio, capture_rb_.get(), playback_rb_.get())) {
+            LOG_ERROR("Pipeline", "Audio init failed");
+            return false;
+        }
+        if (!vad_.init(config.vad)) {
+            LOG_WARN("Pipeline", "VAD init failed (will process all audio)");
+        }
+        LOG_INFO("Pipeline", "Ready (STT-only mode)");
+        return true;
+    }
+
     if (!llm_.init(config.llm)) {
         if (need_llamacpp) { LOG_ERROR("Pipeline", "LLM init failed"); return false; }
         LOG_WARN("Pipeline", "llama.cpp LLM not available (MetalRT will handle LLM)");

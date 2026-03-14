@@ -16,6 +16,12 @@ TtsEngine::~TtsEngine() {
 }
 
 bool TtsEngine::init(const TtsConfig& config) {
+    // Skip init entirely if no model path provided (e.g., STT-only mode)
+    if (config.model_path.empty()) {
+        LOG_DEBUG("TTS", "No model path — skipping init");
+        return false;
+    }
+
     config_ = config;
 
     SherpaOnnxOfflineTtsConfig c;
