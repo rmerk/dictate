@@ -1191,19 +1191,12 @@ const char* rcli_process_command(RCLIHandle handle, const char* text) {
             full_prompt.compare(0, cached.size(), cached) == 0) {
             std::string full_continuation = full_prompt.substr(cached.size());
 
-            if (engine->metalrt_kv_continuation_len > 0 &&
-                engine->metalrt_kv_continuation_len < full_continuation.size()) {
-                std::string new_part = full_continuation.substr(engine->metalrt_kv_continuation_len);
-                LOG_TRACE("RCLI", "[process_command] incremental continue "
-                        "(new=%zu chars, skip=%zu already in KV)",
-                        new_part.size(), engine->metalrt_kv_continuation_len);
-                raw_output = mrt.generate_raw_continue(new_part, nullptr, false);
-            } else {
-                LOG_TRACE("RCLI", "[process_command] full continue "
-                        "(continuation=%zu chars)", full_continuation.size());
-                raw_output = mrt.generate_raw_continue(full_continuation, nullptr, true);
-            }
-            engine->metalrt_kv_continuation_len = full_continuation.size();
+            // Always re-prefill full continuation from cached system prompt.
+            // Incremental continue (reset_cache=false) is unsafe because the KV
+            // cache includes generated tokens not tracked by continuation_len.
+            LOG_TRACE("RCLI", "[process_command] full continue "
+                    "(continuation=%zu chars)", full_continuation.size());
+            raw_output = mrt.generate_raw_continue(full_continuation, nullptr, true);
         } else {
             LOG_TRACE("RCLI", "[process_command] calling mrt.generate_raw() ...");
             raw_output = mrt.generate_raw(full_prompt);
@@ -1961,19 +1954,14 @@ const char* rcli_process_and_speak(RCLIHandle handle, const char* text,
                       full_continuation.size(),
                       engine->metalrt_kv_continuation_len);
 
-            if (engine->metalrt_kv_continuation_len > 0 &&
-                engine->metalrt_kv_continuation_len < full_continuation.size()) {
-                std::string new_part = full_continuation.substr(engine->metalrt_kv_continuation_len);
-                LOG_DEBUG("RCLI", "[speak] incremental continue "
-                        "(new=%zu chars, skip=%zu already in KV)",
-                        new_part.size(), engine->metalrt_kv_continuation_len);
-                response = mrt.generate_raw_continue(new_part, streaming_cb, false);
-            } else {
-                LOG_DEBUG("RCLI", "[speak] full continue "
-                        "(continuation=%zu chars)", full_continuation.size());
-                response = mrt.generate_raw_continue(full_continuation, streaming_cb, true);
-            }
-            engine->metalrt_kv_continuation_len = full_continuation.size();
+            // Always truncate to cached system prompt and re-prefill the full
+            // continuation.  The incremental path (reset_cache=false) is unsafe
+            // because the KV cache also contains generated-response tokens that
+            // metalrt_kv_continuation_len does not account for, which causes
+            // duplicate content in the KV and corrupts multi-turn attention.
+            LOG_DEBUG("RCLI", "[speak] full continue "
+                    "(continuation=%zu chars)", full_continuation.size());
+            response = mrt.generate_raw_continue(full_continuation, streaming_cb, true);
         } else {
             LOG_DEBUG("RCLI", "[speak] cache MISS path — calling generate_raw() "
                       "(has_cache=%d prefix_match=%d)",
