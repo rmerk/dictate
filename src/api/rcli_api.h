@@ -49,6 +49,16 @@ void rcli_destroy(RCLIHandle handle);
 // Returns 0 on success, non-zero on failure.
 int rcli_init(RCLIHandle handle, const char* models_dir, int gpu_layers);
 
+/**
+ * Initialize engine with STT and VAD only (no LLM, no TTS).
+ * Used by dictation daemon for minimal memory footprint (~640MB).
+ * @param handle Engine handle from rcli_create()
+ * @param models_dir Path to models directory (e.g., ~/Library/RCLI/models)
+ * @param gpu_layers Number of GPU layers for STT (default 99)
+ * @return 0 on success, -1 on error
+ */
+int rcli_init_stt_only(RCLIHandle handle, const char* models_dir, int gpu_layers);
+
 // Check if engine is initialized and ready
 int rcli_is_ready(RCLIHandle handle);
 
