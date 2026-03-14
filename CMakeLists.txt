@@ -134,11 +134,14 @@ add_library(rcli STATIC
 
     # --- Dictation hotkey listener ---
     src/dictate/hotkey_listener.mm
+    src/dictate/caret_position.mm
 )
 
 set_source_files_properties(src/audio/mic_permission.mm
     PROPERTIES LANGUAGE CXX)
 set_source_files_properties(src/dictate/hotkey_listener.mm
+    PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/dictate/caret_position.mm
     PROPERTIES LANGUAGE CXX)
 
 target_include_directories(rcli PUBLIC
