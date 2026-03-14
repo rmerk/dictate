@@ -257,3 +257,20 @@ endif()
 # Dictate config test
 add_executable(test_dictate_config tests/test_dictate_config.cpp)
 target_include_directories(test_dictate_config PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+# Daemon test
+add_executable(test_daemon tests/test_daemon.cpp)
+target_include_directories(test_daemon PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_daemon rcli)
+
+# Caret position test
+add_executable(test_caret_position tests/test_caret_position.mm)
+set_source_files_properties(tests/test_caret_position.mm PROPERTIES LANGUAGE CXX)
+target_include_directories(test_caret_position PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_caret_position rcli)
+
+# Paste engine test
+add_executable(test_paste_engine tests/test_paste_engine.mm)
+set_source_files_properties(tests/test_paste_engine.mm PROPERTIES LANGUAGE CXX)
+target_include_directories(test_paste_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_paste_engine rcli)
