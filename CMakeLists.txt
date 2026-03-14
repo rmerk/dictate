@@ -231,3 +231,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_link_options(rcli_cli PRIVATE -Wl,-dead_strip)
     target_link_options(rcli_test PRIVATE -Wl,-dead_strip)
 endif()
+
+# Dictate config test
+add_executable(test_dictate_config tests/test_dictate_config.cpp)
+target_include_directories(test_dictate_config PRIVATE ${CMAKE_SOURCE_DIR}/src)
