@@ -137,6 +137,7 @@ add_library(rcli STATIC
     src/dictate/caret_position.mm
     src/dictate/overlay.mm
     src/dictate/paste_engine.mm
+    src/dictate/daemon.mm
 )
 
 set_source_files_properties(src/audio/mic_permission.mm
@@ -148,6 +149,8 @@ set_source_files_properties(src/dictate/caret_position.mm
 set_source_files_properties(src/dictate/overlay.mm
     PROPERTIES LANGUAGE CXX)
 set_source_files_properties(src/dictate/paste_engine.mm
+    PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/dictate/daemon.mm
     PROPERTIES LANGUAGE CXX)
 
 target_include_directories(rcli PUBLIC
