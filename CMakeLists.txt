@@ -192,6 +192,7 @@ target_compile_options(rcli PRIVATE
 # =============================================================================
 add_executable(rcli_cli
     src/cli/main.cpp
+    src/cli/cmd_dictate.cpp
 )
 
 set_target_properties(rcli_cli PROPERTIES OUTPUT_NAME "rcli")

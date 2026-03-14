@@ -118,6 +118,8 @@ struct Args {
     bool no_speak = false;
     bool verbose = false;
     bool help = false;
+    bool foreground = false;
+    std::string argv0;
 };
 
 inline std::string default_models_dir() {
@@ -129,6 +131,7 @@ inline std::string default_models_dir() {
 inline Args parse_args(int argc, char** argv) {
     Args args;
     args.models_dir = default_models_dir();
+    args.argv0 = argv[0];
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
         if (a == "--models" && i + 1 < argc)     { args.models_dir = argv[++i]; continue; }
@@ -138,6 +141,7 @@ inline Args parse_args(int argc, char** argv) {
         if (a == "--no-speak")                     { args.no_speak = true; continue; }
         if (a == "--verbose" || a == "-v")         { args.verbose = true; continue; }
         if (a == "--help" || a == "-h")            { args.help = true; continue; }
+        if (a == "--foreground")                   { args.foreground = true; continue; }
 
         if (args.command.empty()) args.command = a;
         else if (args.arg1.empty()) args.arg1 = a;
