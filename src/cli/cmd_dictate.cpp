@@ -129,7 +129,58 @@ int cmd_dictate(const Args& args) {
         printf("  paste:        %s\n", cfg.paste ? "true" : "false");
         printf("  notification: %s\n", cfg.notification ? "true" : "false");
         printf("  language:     %s\n", cfg.language.c_str());
-        printf("\nEdit ~/Library/RCLI/config to change settings.\n");
+
+        // Open /dev/tty for interactive input so it works even when stdin is redirected
+        FILE* tty = fopen("/dev/tty", "r");
+        if (!tty) {
+            printf("\nEdit ~/Library/RCLI/config to change settings.\n");
+            return 0;
+        }
+
+        printf("\nEdit settings (press Enter to keep current value):\n");
+
+        char buf[256];
+
+        // hotkey
+        printf("  hotkey [%s]: ", cfg.hotkey.c_str());
+        fflush(stdout);
+        if (fgets(buf, sizeof(buf), tty)) {
+            std::string val(buf);
+            if (!val.empty() && val.back() == '\n') val.pop_back();
+            if (!val.empty()) cfg.hotkey = val;
+        }
+
+        // paste
+        printf("  paste (true/false) [%s]: ", cfg.paste ? "true" : "false");
+        fflush(stdout);
+        if (fgets(buf, sizeof(buf), tty)) {
+            std::string val(buf);
+            if (!val.empty() && val.back() == '\n') val.pop_back();
+            if (!val.empty()) cfg.paste = (val == "true");
+        }
+
+        // notification
+        printf("  notification (true/false) [%s]: ", cfg.notification ? "true" : "false");
+        fflush(stdout);
+        if (fgets(buf, sizeof(buf), tty)) {
+            std::string val(buf);
+            if (!val.empty() && val.back() == '\n') val.pop_back();
+            if (!val.empty()) cfg.notification = (val == "true");
+        }
+
+        // language
+        printf("  language [%s]: ", cfg.language.c_str());
+        fflush(stdout);
+        if (fgets(buf, sizeof(buf), tty)) {
+            std::string val(buf);
+            if (!val.empty() && val.back() == '\n') val.pop_back();
+            if (!val.empty()) cfg.language = val;
+        }
+
+        fclose(tty);
+
+        rcli::save_dictate_config(config_path, cfg);
+        printf("\nConfig saved.\n");
         return 0;
     }
 
