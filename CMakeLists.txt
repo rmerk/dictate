@@ -136,6 +136,7 @@ add_library(rcli STATIC
     src/dictate/hotkey_listener.mm
     src/dictate/caret_position.mm
     src/dictate/overlay.mm
+    src/dictate/paste_engine.mm
 )
 
 set_source_files_properties(src/audio/mic_permission.mm
@@ -145,6 +146,8 @@ set_source_files_properties(src/dictate/hotkey_listener.mm
 set_source_files_properties(src/dictate/caret_position.mm
     PROPERTIES LANGUAGE CXX)
 set_source_files_properties(src/dictate/overlay.mm
+    PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/dictate/paste_engine.mm
     PROPERTIES LANGUAGE CXX)
 
 target_include_directories(rcli PUBLIC
@@ -168,6 +171,7 @@ target_link_libraries(rcli PUBLIC
     "-framework ApplicationServices"
     "-framework Carbon"
     "-framework AppKit"
+    "-framework UserNotifications"
 )
 
 if(GGML_METAL)
