@@ -131,9 +131,14 @@ add_library(rcli STATIC
     src/actions/communication_actions.cpp
     src/actions/browser_actions.cpp
     src/api/rcli_api.cpp
+
+    # --- Dictation hotkey listener ---
+    src/dictate/hotkey_listener.mm
 )
 
 set_source_files_properties(src/audio/mic_permission.mm
+    PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/dictate/hotkey_listener.mm
     PROPERTIES LANGUAGE CXX)
 
 target_include_directories(rcli PUBLIC
@@ -154,6 +159,9 @@ target_link_libraries(rcli PUBLIC
     "-framework Foundation"
     "-framework AVFoundation"
     "-framework IOKit"
+    "-framework ApplicationServices"
+    "-framework Carbon"
+    "-framework AppKit"
 )
 
 if(GGML_METAL)
