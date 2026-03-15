@@ -35,6 +35,15 @@ DYLIBS=(
     "$BUILD_DIR/lib/libsherpa-onnx-c-api.dylib"
 )
 
+# libmtmd (VLM multimodal) may be in bin/ or mtmd/
+MTMD_DYLIB=$(find "$BUILD_DIR" -name "libmtmd.0.dylib" -not -path "*/CMakeFiles/*" 2>/dev/null | head -1)
+if [ -n "$MTMD_DYLIB" ]; then
+    cp -L "$MTMD_DYLIB" "$DIST_DIR/lib/libmtmd.0.dylib"
+    echo "  + lib/libmtmd.0.dylib"
+else
+    echo "  WARNING: libmtmd.0.dylib not found in build tree"
+fi
+
 ONNX_DYLIB=$(find "$BUILD_DIR/_deps/onnxruntime-src/lib" -name "libonnxruntime.*.*.dylib" 2>/dev/null | head -1)
 if [ -z "$ONNX_DYLIB" ]; then
     ONNX_DYLIB=$(find "$BUILD_DIR/_deps/onnxruntime-src/lib" -name "libonnxruntime.*.dylib" ! -name "libonnxruntime.dylib" 2>/dev/null | head -1)
@@ -68,7 +77,7 @@ fi
 # --- Validate all required dylibs are present ---
 echo ""
 echo "Validating packaged dylibs..."
-REQUIRED_LIBS=(libllama libggml libsherpa-onnx-c-api libonnxruntime)
+REQUIRED_LIBS=(libllama libmtmd libggml libsherpa-onnx-c-api libonnxruntime)
 MISSING=0
 for req in "${REQUIRED_LIBS[@]}"; do
     if ! ls "$DIST_DIR/lib/"${req}* 1>/dev/null 2>&1; then
