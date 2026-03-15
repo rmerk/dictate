@@ -447,7 +447,6 @@ public:
                 // S key: toggle visual mode (swap LLM ↔ VLM on GPU)
                 if (c == "s" || c == "S") {
                     if (screen_capture_overlay_active()) {
-                        // Exit visual mode: hide overlay, swap VLM → LLM
                         screen_capture_hide_overlay();
                         add_system_message("Exiting visual mode, restoring LLM...");
                         screen_->Post(Event::Custom);
@@ -457,15 +456,27 @@ public:
                             screen_->Post(Event::Custom);
                         }).detach();
                     } else {
-                        // Enter visual mode: swap LLM → VLM, show overlay
                         add_system_message("Entering visual mode, loading VLM...");
                         screen_->Post(Event::Custom);
                         std::thread([this]() {
+                            // Try MetalRT VLM first; if unavailable, lazily init llama.cpp VLM
+                            bool ready = false;
                             if (rcli_vlm_enter(engine_) == 0) {
+                                ready = true;
+                            } else if (rcli_vlm_init(engine_) == 0) {
+                                ready = true;
+                            }
+                            if (ready) {
+                                const char* vbe = rcli_vlm_backend_name(engine_);
+                                const char* vmodel = rcli_vlm_model_name(engine_);
                                 screen_capture_show_overlay(0, 0, 0, 0);
-                                add_system_message("Visual mode ON — drag/resize the green frame, then ask a question");
+                                std::string msg = "Visual mode ON";
+                                if (vbe && vbe[0])
+                                    msg += std::string(" — ") + vmodel + " via " + vbe;
+                                msg += ". Drag/resize the green frame, then ask a question";
+                                add_system_message(msg);
                             } else {
-                                add_system_message("Failed to load VLM model");
+                                add_system_message("Failed to load VLM model. Install one: rcli models vlm");
                             }
                             screen_->Post(Event::Custom);
                         }).detach();
@@ -2243,17 +2254,25 @@ private:
                 screen_->Post(Event::Custom);
                 return;
             }
-            add_system_message("Photo captured! Analyzing with VLM...");
+            add_system_message("Photo captured! Loading VLM...");
             screen_->Post(Event::Custom);
+
             const char* response = rcli_vlm_analyze(
                 engine_, photo_path.c_str(), prompt_copy.c_str());
+
+            // Show which backend handled it
+            const char* vbe = rcli_vlm_backend_name(engine_);
+            const char* vmodel = rcli_vlm_model_name(engine_);
+            if (vbe && vbe[0]) {
+                add_system_message(std::string("VLM: ") + vmodel + " via " + vbe);
+                screen_->Post(Event::Custom);
+            }
+
             if (response && response[0]) {
                 add_response(response, "VLM");
-                // Speak the VLM response
                 voice_state_ = VoiceState::SPEAKING;
                 screen_->Post(Event::Custom);
                 rcli_speak(engine_, response);
-                // Show performance stats
                 RCLIVlmStats stats;
                 if (rcli_vlm_get_stats(engine_, &stats) == 0) {
                     char buf[128];
@@ -2265,7 +2284,6 @@ private:
                 add_response("(VLM analysis failed. Install a VLM model: rcli models vlm)", "");
             }
             voice_state_ = VoiceState::IDLE;
-            // Open the captured photo in Preview
             {
                 pid_t pid;
                 const char* argv[] = {"open", photo_path.c_str(), nullptr};
@@ -2292,10 +2310,9 @@ private:
                 screen_->Post(Event::Custom);
                 return;
             }
-            add_system_message("Analyzing with VLM...");
+            add_system_message("Loading VLM...");
             screen_->Post(Event::Custom);
 
-            // Streaming VLM analysis — accumulate response for display + TTS
             std::string accumulated;
             auto stream_cb = [](const char* event, const char* data, void* ud) {
                 auto* accum = static_cast<std::string*>(ud);
@@ -2306,9 +2323,16 @@ private:
             int vlm_rc = rcli_vlm_analyze_stream(engine_, screen_path.c_str(),
                                                   prompt_copy.c_str(), stream_cb, &accumulated);
 
+            // Show which backend handled it
+            const char* vbe = rcli_vlm_backend_name(engine_);
+            const char* vmodel = rcli_vlm_model_name(engine_);
+            if (vbe && vbe[0]) {
+                add_system_message(std::string("VLM: ") + vmodel + " via " + vbe);
+                screen_->Post(Event::Custom);
+            }
+
             if (vlm_rc == 0 && !accumulated.empty()) {
                 add_response(accumulated, "VLM");
-                // Speak via sentence-streamed TTS
                 voice_state_ = VoiceState::SPEAKING;
                 screen_->Post(Event::Custom);
                 rcli_speak_streaming(engine_, accumulated.c_str(), nullptr, nullptr);

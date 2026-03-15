@@ -279,6 +279,14 @@ const char* rcli_vlm_analyze(RCLIHandle handle, const char* image_path, const ch
 // Returns 1 if ready, 0 if not.
 int rcli_vlm_is_ready(RCLIHandle handle);
 
+// Get the name of the active VLM backend (e.g. "llama.cpp (Metal GPU)" or "MetalRT").
+// Returns "" if VLM is not initialized.
+const char* rcli_vlm_backend_name(RCLIHandle handle);
+
+// Get the name of the active VLM model (e.g. "Qwen3 VL 2B Instruct").
+// Returns "" if VLM is not initialized.
+const char* rcli_vlm_model_name(RCLIHandle handle);
+
 // VLM performance stats from the last analysis call.
 typedef struct {
     double   gen_tok_per_sec;     // Generation tokens/second

@@ -491,12 +491,20 @@ static int cmd_vlm(const Args& args) {
         return 1;
     }
 
+    // Show which VLM backend is active
+    const char* backend = rcli_vlm_backend_name(g_engine);
+    const char* model = rcli_vlm_model_name(g_engine);
+    if (backend && backend[0]) {
+        fprintf(stderr, "%s  VLM: %s%s%s via %s%s%s%s\n",
+                color::dim, color::reset, color::bold, model,
+                color::reset, color::dim, backend, color::reset);
+    }
+
     fprintf(stderr, "%sAnalyzing image: %s%s\n", color::dim, image_path.c_str(), color::reset);
 
     const char* response = rcli_vlm_analyze(g_engine, image_path.c_str(), prompt.c_str());
     if (response && response[0]) {
         fprintf(stdout, "%s\n", response);
-        // Print performance stats
         RCLIVlmStats stats;
         if (rcli_vlm_get_stats(g_engine, &stats) == 0) {
             fprintf(stderr, "\n%s⚡ %.1f tok/s  (%d tokens, %.1fs total, first token %.0fms)%s\n",
@@ -543,6 +551,14 @@ static int cmd_camera(const Args& args) {
         return 1;
     }
 
+    const char* backend = rcli_vlm_backend_name(g_engine);
+    const char* model = rcli_vlm_model_name(g_engine);
+    if (backend && backend[0]) {
+        fprintf(stderr, "%s  VLM: %s%s%s via %s%s%s%s\n",
+                color::dim, color::reset, color::bold, model,
+                color::reset, color::dim, backend, color::reset);
+    }
+
     const char* response = rcli_vlm_analyze(g_engine, photo_path.c_str(), prompt.c_str());
     if (response && response[0]) {
         fprintf(stdout, "%s\n", response);
@@ -550,14 +566,12 @@ static int cmd_camera(const Args& args) {
             rcli_init(g_engine, args.models_dir.c_str(), args.gpu_layers);
             rcli_speak(g_engine, response);
         }
-        // Print performance stats
         RCLIVlmStats stats;
         if (rcli_vlm_get_stats(g_engine, &stats) == 0) {
             fprintf(stderr, "\n%s⚡ %.1f tok/s  (%d tokens, %.1fs total, first token %.0fms)%s\n",
                     color::dim, stats.gen_tok_per_sec, stats.generated_tokens,
                     stats.total_time_sec, stats.first_token_ms, color::reset);
         }
-        // Open the captured photo in Preview so user can see what was captured
         {
             pid_t pid;
             const char* argv[] = {"open", photo_path.c_str(), nullptr};
@@ -603,6 +617,14 @@ static int cmd_screen(const Args& args) {
                 color::bold, color::red, color::reset);
         rcli_destroy(g_engine);
         return 1;
+    }
+
+    const char* backend = rcli_vlm_backend_name(g_engine);
+    const char* model = rcli_vlm_model_name(g_engine);
+    if (backend && backend[0]) {
+        fprintf(stderr, "%s  VLM: %s%s%s via %s%s%s%s\n",
+                color::dim, color::reset, color::bold, model,
+                color::reset, color::dim, backend, color::reset);
     }
 
     const char* response = rcli_vlm_analyze(g_engine, screen_path.c_str(), prompt.c_str());

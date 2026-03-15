@@ -694,9 +694,12 @@ inline int cmd_info() {
 
     auto vlm_all_info = rcli::all_vlm_models();
     auto [vlm_found, vlm_def] = rcli::find_installed_vlm(models_dir);
-    std::string vlm_info = vlm_found
-        ? (vlm_def.name + " (llama.cpp + mtmd)")
-        : "not installed — run: rcli models vlm";
+    std::string vlm_info;
+    if (vlm_found) {
+        vlm_info = vlm_def.name + " (llama.cpp, Metal GPU)";
+    } else {
+        vlm_info = "not installed — run: rcli models vlm";
+    }
 
     fprintf(stdout,
         "\n%s%s  RCLI%s %s%s%s\n\n"

@@ -122,6 +122,8 @@ struct RCLIEngine {
     bool using_metalrt_vlm = false;       // true when VLM is running on MetalRT backend
     void* metalrt_vision_handle = nullptr; // opaque handle from metalrt_vision_create()
     std::string last_vlm_response;
+    std::string vlm_backend_name;         // "llama.cpp (Metal GPU)" or "MetalRT"
+    std::string vlm_model_name;           // e.g. "Qwen3 VL 2B"
 
     // MetalRT VLM stats (filled after each analyze call)
     struct {
@@ -3084,6 +3086,8 @@ static int vlm_init_locked(RCLIEngine* engine) {
                     engine->vlm_initialized = true;
                     const char* mname = mrt_loader.vision_model_name
                         ? mrt_loader.vision_model_name(handle) : "Qwen3-VL-2B";
+                    engine->vlm_backend_name = "MetalRT";
+                    engine->vlm_model_name = mname;
                     LOG_INFO("VLM", "MetalRT VLM engine ready (%s)", mname);
                     return 0;
                 }
@@ -3094,6 +3098,11 @@ static int vlm_init_locked(RCLIEngine* engine) {
     }
 
     // --- Fallback: llama.cpp VLM backend ---
+    // MetalRT dylib either not loaded, or doesn't export vision symbols yet.
+    // Use llama.cpp with GGUF models — still runs on Metal GPU via ggml-metal.
+    if (mrt_loader.is_loaded() && !mrt_loader.has_vision()) {
+        LOG_INFO("VLM", "MetalRT engine active but VLM not yet supported in dylib — using llama.cpp for vision");
+    }
 
     // Find or download VLM model
     auto vlm_models = rcli::all_vlm_models();
@@ -3142,7 +3151,10 @@ static int vlm_init_locked(RCLIEngine* engine) {
     }
 
     engine->vlm_initialized = true;
-    LOG_INFO("VLM", "VLM engine ready (%s)", model_def.name.c_str());
+    engine->using_metalrt_vlm = false;
+    engine->vlm_backend_name = "llama.cpp (Metal GPU)";
+    engine->vlm_model_name = model_def.name;
+    LOG_INFO("VLM", "VLM engine ready — %s via llama.cpp (Metal GPU)", model_def.name.c_str());
     return 0;
 }
 
@@ -3230,6 +3242,18 @@ int rcli_vlm_is_ready(RCLIHandle handle) {
     return engine->vlm_initialized ? 1 : 0;
 }
 
+const char* rcli_vlm_backend_name(RCLIHandle handle) {
+    if (!handle) return "";
+    auto* engine = static_cast<RCLIEngine*>(handle);
+    return engine->vlm_backend_name.c_str();
+}
+
+const char* rcli_vlm_model_name(RCLIHandle handle) {
+    if (!handle) return "";
+    auto* engine = static_cast<RCLIEngine*>(handle);
+    return engine->vlm_model_name.c_str();
+}
+
 int rcli_vlm_get_stats(RCLIHandle handle, RCLIVlmStats* out_stats) {
     if (!handle || !out_stats) return -1;
     auto* engine = static_cast<RCLIEngine*>(handle);
@@ -3312,16 +3336,24 @@ int rcli_vlm_exit(RCLIHandle handle) {
     auto* engine = static_cast<RCLIEngine*>(handle);
     std::lock_guard<std::mutex> lock(engine->mutex);
 
-    // Unload VLM
+    // Unload MetalRT VLM if active
     if (engine->metalrt_vision_handle) {
         auto& loader = rastack::MetalRTLoader::instance();
         if (loader.vision_destroy)
             loader.vision_destroy(engine->metalrt_vision_handle);
         engine->metalrt_vision_handle = nullptr;
     }
+
+    // Shutdown llama.cpp VLM if it was the active backend
+    if (!engine->using_metalrt_vlm && engine->vlm_engine.is_initialized()) {
+        engine->vlm_engine.shutdown();
+    }
+
     engine->using_metalrt_vlm = false;
     engine->vlm_initialized = false;
-    LOG_INFO("VLM", "MetalRT VLM unloaded");
+    engine->vlm_backend_name.clear();
+    engine->vlm_model_name.clear();
+    LOG_INFO("VLM", "VLM unloaded");
 
     // Reload MetalRT LLM
     if (engine->pipeline.using_metalrt()) {
@@ -3351,67 +3383,96 @@ int rcli_vlm_analyze_stream(RCLIHandle handle, const char* image_path,
     auto* engine = static_cast<RCLIEngine*>(handle);
     std::lock_guard<std::mutex> lock(engine->mutex);
 
-    if (!engine->using_metalrt_vlm || !engine->metalrt_vision_handle) {
-        LOG_ERROR("VLM", "VLM not loaded. Call rcli_vlm_enter() first.");
-        return -1;
+    // Lazy-init VLM if not yet loaded
+    if (!engine->vlm_initialized) {
+        if (vlm_init_locked(engine) != 0) {
+            LOG_ERROR("VLM", "Failed to initialize VLM engine for streaming");
+            return -1;
+        }
     }
 
     std::string text_prompt = (prompt && prompt[0])
         ? std::string(prompt) : "Describe this image in detail.";
 
-    auto& loader = rastack::MetalRTLoader::instance();
-    std::string accumulated;
+    if (engine->using_metalrt_vlm && engine->metalrt_vision_handle) {
+        // --- MetalRT VLM streaming path ---
+        auto& loader = rastack::MetalRTLoader::instance();
+        std::string accumulated;
 
-    struct StreamCtx {
-        RCLIEventCallback cb;
-        void* ud;
-        std::string* accum;
-    };
-    StreamCtx sctx{callback, user_data, &accumulated};
+        struct StreamCtx {
+            RCLIEventCallback cb;
+            void* ud;
+            std::string* accum;
+        };
+        StreamCtx sctx{callback, user_data, &accumulated};
 
-    rastack::MetalRTStreamCb stream_cb = [](const char* piece, void* ud) -> bool {
-        auto* ctx = static_cast<StreamCtx*>(ud);
-        // Skip special tokens
-        if (std::strstr(piece, "<|im_end|>") || std::strstr(piece, "<|im_start|>"))
+        rastack::MetalRTStreamCb stream_cb = [](const char* piece, void* ud) -> bool {
+            auto* ctx = static_cast<StreamCtx*>(ud);
+            if (std::strstr(piece, "<|im_end|>") || std::strstr(piece, "<|im_start|>"))
+                return true;
+            ctx->accum->append(piece);
+            if (ctx->cb) ctx->cb("token", piece, ctx->ud);
             return true;
-        ctx->accum->append(piece);
-        if (ctx->cb) ctx->cb("token", piece, ctx->ud);
-        return true;
-    };
+        };
 
-    rastack::MetalRTLoader::MetalRTVisionOptions opts{};
-    opts.max_tokens = 512;
-    opts.top_k = 40;
-    opts.temperature = 0.0f;
-    opts.think = false;
+        rastack::MetalRTLoader::MetalRTVisionOptions opts{};
+        opts.max_tokens = 512;
+        opts.top_k = 40;
+        opts.temperature = 0.0f;
+        opts.think = false;
 
-    rastack::MetalRTLoader::MetalRTVisionResult vr;
-    {
-        std::lock_guard<std::mutex> gpu_lock(loader.gpu_mutex());
-        vr = loader.vision_analyze_stream(engine->metalrt_vision_handle,
-                                           image_path, text_prompt.c_str(),
-                                           stream_cb, &sctx, &opts);
-    }
+        rastack::MetalRTLoader::MetalRTVisionResult vr;
+        {
+            std::lock_guard<std::mutex> gpu_lock(loader.gpu_mutex());
+            vr = loader.vision_analyze_stream(engine->metalrt_vision_handle,
+                                               image_path, text_prompt.c_str(),
+                                               stream_cb, &sctx, &opts);
+        }
 
-    // Store stats
-    engine->metalrt_vlm_stats.vision_encode_ms = vr.vision_encode_ms;
-    engine->metalrt_vlm_stats.prefill_ms = vr.prefill_ms;
-    engine->metalrt_vlm_stats.decode_ms = vr.decode_ms;
-    engine->metalrt_vlm_stats.tps = vr.tps;
-    engine->metalrt_vlm_stats.prompt_tokens = vr.prompt_tokens;
-    engine->metalrt_vlm_stats.generated_tokens = vr.generated_tokens;
+        engine->metalrt_vlm_stats.vision_encode_ms = vr.vision_encode_ms;
+        engine->metalrt_vlm_stats.prefill_ms = vr.prefill_ms;
+        engine->metalrt_vlm_stats.decode_ms = vr.decode_ms;
+        engine->metalrt_vlm_stats.tps = vr.tps;
+        engine->metalrt_vlm_stats.prompt_tokens = vr.prompt_tokens;
+        engine->metalrt_vlm_stats.generated_tokens = vr.generated_tokens;
 
-    std::string result = vr.response ? std::string(vr.response) : accumulated;
-    if (loader.vision_free_result) loader.vision_free_result(vr);
-    engine->last_vlm_response = result.empty() ? "Error: Failed to analyze image." : result;
+        std::string result = vr.response ? std::string(vr.response) : accumulated;
+        if (loader.vision_free_result) loader.vision_free_result(vr);
+        engine->last_vlm_response = result.empty() ? "Error: Failed to analyze image." : result;
 
-    if (callback) {
-        callback("response", engine->last_vlm_response.c_str(), user_data);
-        char stats_buf[256];
-        snprintf(stats_buf, sizeof(stats_buf),
-                 "{\"tps\":%.1f,\"tokens\":%d,\"vision_encode_ms\":%.1f}",
-                 vr.tps, vr.generated_tokens, vr.vision_encode_ms);
-        callback("stats", stats_buf, user_data);
+        if (callback) {
+            callback("response", engine->last_vlm_response.c_str(), user_data);
+            char stats_buf[256];
+            snprintf(stats_buf, sizeof(stats_buf),
+                     "{\"tps\":%.1f,\"tokens\":%d,\"vision_encode_ms\":%.1f}",
+                     vr.tps, vr.generated_tokens, vr.vision_encode_ms);
+            callback("stats", stats_buf, user_data);
+        }
+    } else {
+        // --- llama.cpp VLM streaming path ---
+        rastack::TokenCallback token_cb = nullptr;
+        if (callback) {
+            token_cb = [callback, user_data](const rastack::TokenOutput& tok) {
+                if (!tok.text.empty()) {
+                    callback("token", tok.text.c_str(), user_data);
+                }
+            };
+        }
+
+        std::string result = engine->vlm_engine.analyze_image(
+            std::string(image_path), text_prompt, token_cb);
+
+        engine->last_vlm_response = result.empty() ? "Error: Failed to analyze image." : result;
+
+        if (callback) {
+            callback("response", engine->last_vlm_response.c_str(), user_data);
+            auto& s = engine->vlm_engine.last_stats();
+            char stats_buf[256];
+            snprintf(stats_buf, sizeof(stats_buf),
+                     "{\"tps\":%.1f,\"tokens\":%lld,\"vision_encode_ms\":%.1f}",
+                     s.gen_tps(), s.generated_tokens, s.image_encode_us / 1000.0);
+            callback("stats", stats_buf, user_data);
+        }
     }
 
     return engine->last_vlm_response.find("Error:") == 0 ? -1 : 0;
