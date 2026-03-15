@@ -340,7 +340,7 @@ inline std::vector<MetalRTComponentModel> metalrt_component_models() {
             "Kokoro 82M (bf16)",
             "tts",
             "runanywhere/kokoro_bf16",
-            "",
+            "Kokoro-82M-bf16",
             "Kokoro-82M-bf16",
             82,
             "Kokoro TTS for GPU-accelerated speech synthesis",
