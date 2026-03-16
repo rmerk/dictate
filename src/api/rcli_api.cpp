@@ -2869,6 +2869,54 @@ void rcli_deregister_all_callbacks(RCLIHandle handle) {
     engine->pipeline.set_state_callback(nullptr);
 }
 
+char* rcli_list_available_models(RCLIHandle handle) {
+    if (!handle) return nullptr;
+    auto* engine = static_cast<RCLIEngine*>(handle);
+
+    std::string json = "[";
+    bool first = true;
+
+    // LLM models
+    for (const auto& m : rcli::all_models()) {
+        if (!first) json += ",";
+        first = false;
+        std::string path = engine->models_dir + "/" + m.filename;
+        bool downloaded = (access(path.c_str(), F_OK) == 0);
+        json += "{\"id\":\"" + m.id + "\","
+                "\"name\":\"" + m.name + "\","
+                "\"size_mb\":" + std::to_string(m.size_mb) + ","
+                "\"type\":\"llm\","
+                "\"is_downloaded\":" + (downloaded ? "true" : "false") + "}";
+    }
+
+    // TTS models
+    for (const auto& m : rcli::all_tts_models()) {
+        if (!first) json += ",";
+        first = false;
+        bool downloaded = rcli::is_tts_installed(engine->models_dir, m);
+        json += "{\"id\":\"" + m.id + "\","
+                "\"name\":\"" + m.name + "\","
+                "\"size_mb\":" + std::to_string(m.size_mb) + ","
+                "\"type\":\"tts\","
+                "\"is_downloaded\":" + (downloaded ? "true" : "false") + "}";
+    }
+
+    // STT models
+    for (const auto& m : rcli::all_stt_models()) {
+        if (!first) json += ",";
+        first = false;
+        bool downloaded = rcli::is_stt_installed(engine->models_dir, m);
+        json += "{\"id\":\"" + m.id + "\","
+                "\"name\":\"" + m.name + "\","
+                "\"size_mb\":" + std::to_string(m.size_mb) + ","
+                "\"type\":\"stt\","
+                "\"is_downloaded\":" + (downloaded ? "true" : "false") + "}";
+    }
+
+    json += "]";
+    return strdup(json.c_str());
+}
+
 } // extern "C"
 
 std::vector<rcli::ActionDef> rcli_get_all_action_defs(RCLIHandle handle) {

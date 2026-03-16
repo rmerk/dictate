@@ -202,6 +202,11 @@ void rcli_reset_actions_to_defaults(RCLIHandle handle);
 // Returns 0 on success, -1 on failure.
 int rcli_switch_llm(RCLIHandle handle, const char* model_id);
 
+// List available models in the registry as JSON array.
+// Each entry: {id, name, size_mb, type ("llm"|"tts"|"stt"), is_downloaded}
+// Caller must free() the returned string. Returns NULL on failure.
+char* rcli_list_available_models(RCLIHandle handle);
+
 // --- Barge-In & Voice Mode ---
 
 // Enable/disable voice barge-in (user can interrupt TTS mid-speech)
