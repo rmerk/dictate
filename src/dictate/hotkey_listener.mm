@@ -20,6 +20,7 @@ static CGKeyCode           g_target_keycode  = 0;
 static CGEventFlags        g_target_flags    = 0;
 static HotkeyCallback      g_callback;
 static std::mutex          g_mutex;
+static bool                g_active = false; // true when recording
 
 // ---------------------------------------------------------------------------
 // Key-name → CGKeyCode mapping
@@ -122,7 +123,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy /*proxy*/,
 
     CGKeyCode keycode = (CGKeyCode)CGEventGetIntegerValueField(
         event, kCGKeyboardEventKeycode);
-
     CGEventFlags flags = CGEventGetFlags(event);
 
     // Mask to only the modifier bits we care about
@@ -130,9 +130,17 @@ static CGEventRef event_tap_callback(CGEventTapProxy /*proxy*/,
         kCGEventFlagMaskCommand | kCGEventFlagMaskShift |
         kCGEventFlagMaskControl | kCGEventFlagMaskAlternate;
 
-    if (keycode == g_target_keycode &&
-        (flags & mod_mask) == g_target_flags) {
-        // Fire callback on main thread
+    bool is_hotkey = (keycode == g_target_keycode &&
+                      (flags & mod_mask) == g_target_flags);
+
+    // Bare Enter (no modifiers) also stops recording when active
+    bool is_enter_stop = false;
+    {
+        std::lock_guard<std::mutex> lk(g_mutex);
+        is_enter_stop = g_active && keycode == kVK_Return && (flags & mod_mask) == 0;
+    }
+
+    if (is_hotkey || is_enter_stop) {
         HotkeyCallback cb;
         {
             std::lock_guard<std::mutex> lk(g_mutex);
@@ -196,6 +204,11 @@ bool hotkey_start(const std::string& hotkey_str, HotkeyCallback callback) {
 
     CGEventTapEnable(g_event_tap, true);
     return true;
+}
+
+void hotkey_set_active(bool active) {
+    std::lock_guard<std::mutex> lk(g_mutex);
+    g_active = active;
 }
 
 void hotkey_stop() {

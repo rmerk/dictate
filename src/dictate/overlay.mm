@@ -51,6 +51,9 @@
 
     NSRect bounds = self.bounds;
 
+    // Draw accent ring
+    [self drawRingInRect:bounds];
+
     if (_state == rcli::OverlayState::Recording) {
         [self drawMicInRect:bounds];
     } else {
@@ -58,38 +61,56 @@
     }
 }
 
-- (void)drawMicInRect:(NSRect)bounds {
-    // Pulsing alpha based on animation phase
-    CGFloat alpha = 0.5 + 0.5 * sin(_animationPhase * M_PI * 2.0);
+- (void)drawRingInRect:(NSRect)bounds {
+    CGFloat ringWidth = 2.5;
+    NSRect ringRect = NSInsetRect(bounds, ringWidth / 2.0, ringWidth / 2.0);
+    NSBezierPath *ring = [NSBezierPath bezierPathWithOvalInRect:ringRect];
+    [ring setLineWidth:ringWidth];
 
+    if (_state == rcli::OverlayState::Recording) {
+        // Pulsing red ring
+        CGFloat pulse = 0.6 + 0.4 * sin(_animationPhase * M_PI * 2.0);
+        [[NSColor colorWithRed:1.0 green:0.25 blue:0.25 alpha:pulse] set];
+    } else {
+        // Steady blue ring
+        [[NSColor colorWithRed:0.3 green:0.6 blue:1.0 alpha:0.9] set];
+    }
+    [ring stroke];
+}
+
+- (void)drawMicInRect:(NSRect)bounds {
     NSImage *micImage = [NSImage imageWithSystemSymbolName:@"mic.fill"
                                  accessibilityDescription:@"Recording"];
     if (micImage) {
         NSImageSymbolConfiguration *config =
-            [NSImageSymbolConfiguration configurationWithPointSize:22
+            [NSImageSymbolConfiguration configurationWithPointSize:24
                                                             weight:NSFontWeightMedium
                                                              scale:NSImageSymbolScaleLarge];
         micImage = [micImage imageWithSymbolConfiguration:config];
+        [micImage setTemplate:YES];
 
-        [[NSColor colorWithWhite:1.0 alpha:alpha] set];
-
-        CGFloat imgSize = 24.0;
+        CGFloat imgSize = 28.0;
         NSRect imgRect = NSMakeRect((bounds.size.width - imgSize) / 2.0,
                                     (bounds.size.height - imgSize) / 2.0,
                                     imgSize, imgSize);
 
-        [micImage drawInRect:imgRect
-                    fromRect:NSZeroRect
-                   operation:NSCompositingOperationSourceOver
-                    fraction:alpha
-              respectFlipped:YES
-                       hints:nil];
-    } else {
-        // Fallback: draw a simple circle as mic placeholder
-        [[NSColor colorWithWhite:1.0 alpha:alpha] set];
-        NSRect circle = NSInsetRect(bounds, 14, 14);
-        NSBezierPath *path = [NSBezierPath bezierPathWithOvalInRect:circle];
-        [path fill];
+        // Lock focus on a new image to draw tinted
+        NSImage *tinted = [[NSImage alloc] initWithSize:NSMakeSize(imgSize, imgSize)];
+        [tinted lockFocus];
+        [[NSColor whiteColor] set];
+        NSRect src = NSMakeRect(0, 0, imgSize, imgSize);
+        [micImage drawInRect:src fromRect:NSZeroRect
+                   operation:NSCompositingOperationSourceOver fraction:1.0
+              respectFlipped:YES hints:nil];
+        NSRectFillUsingOperation(src, NSCompositingOperationSourceIn);
+        [tinted unlockFocus];
+
+        [tinted drawInRect:imgRect
+                  fromRect:NSZeroRect
+                 operation:NSCompositingOperationSourceOver
+                  fraction:1.0
+            respectFlipped:YES
+                     hints:nil];
     }
 }
 
@@ -111,7 +132,7 @@
                                  clockwise:NO];
     [arc setLineWidth:lineWidth];
     [arc setLineCapStyle:NSLineCapStyleRound];
-    [[NSColor colorWithWhite:1.0 alpha:0.9] set];
+    [[NSColor colorWithRed:0.3 green:0.6 blue:1.0 alpha:0.9] set];
     [arc stroke];
 }
 
@@ -139,7 +160,7 @@ void overlay_init() {
         [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     }
 
-    const CGFloat size = 48.0;
+    const CGFloat size = 56.0;
     NSRect frame = NSMakeRect(0, 0, size, size);
 
     g_overlayWindow = [[NSWindow alloc] initWithContentRect:frame
@@ -149,7 +170,7 @@ void overlay_init() {
 
     [g_overlayWindow setLevel:NSStatusWindowLevel];
     [g_overlayWindow setOpaque:NO];
-    [g_overlayWindow setBackgroundColor:[NSColor colorWithWhite:0.1 alpha:0.85]];
+    [g_overlayWindow setBackgroundColor:[NSColor clearColor]];
     [g_overlayWindow setHasShadow:YES];
     [g_overlayWindow setIgnoresMouseEvents:YES];
     [g_overlayWindow setCollectionBehavior:
@@ -160,6 +181,16 @@ void overlay_init() {
     g_overlayWindow.contentView.wantsLayer = YES;
     g_overlayWindow.contentView.layer.cornerRadius = size / 2.0;
     g_overlayWindow.contentView.layer.masksToBounds = YES;
+
+    // Vibrancy effect (frosted glass)
+    NSVisualEffectView *vibrancy = [[NSVisualEffectView alloc] initWithFrame:frame];
+    vibrancy.material = NSVisualEffectMaterialHUDWindow;
+    vibrancy.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+    vibrancy.state = NSVisualEffectStateActive;
+    vibrancy.wantsLayer = YES;
+    vibrancy.layer.cornerRadius = size / 2.0;
+    vibrancy.layer.masksToBounds = YES;
+    [g_overlayWindow.contentView addSubview:vibrancy];
 
     g_overlayView = [[OverlayView alloc] initWithFrame:frame];
     [g_overlayWindow.contentView addSubview:g_overlayView];
@@ -178,7 +209,7 @@ void overlay_show(OverlayState state, std::optional<ScreenPoint> position) {
         // Convert: cocoa_y = screen_height - ax_y - window_height
         CGFloat screenHeight = [NSScreen mainScreen].frame.size.height;
         CGFloat x = position->x + 8.0;
-        CGFloat y = screenHeight - position->y - 48.0;
+        CGFloat y = screenHeight - position->y - 56.0;
         [g_overlayWindow setFrameOrigin:NSMakePoint(x, y)];
     } else {
         // Top-right corner of main screen

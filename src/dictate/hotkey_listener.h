@@ -15,6 +15,10 @@ bool hotkey_start(const std::string& hotkey_str, HotkeyCallback callback);
 // Stop listening and release the event tap.
 void hotkey_stop();
 
+// Set whether the hotkey is "active" (i.e., recording in progress).
+// When active, bare Enter also triggers the callback to stop recording.
+void hotkey_set_active(bool active);
+
 // Check if Accessibility permission is granted.
 bool hotkey_check_accessibility();
 

@@ -30,11 +30,13 @@ static void cleanup() {
 static void on_hotkey() {
     if (!g_dictate_recording) {
         g_dictate_recording = true;
+        rcli::hotkey_set_active(true);
         auto caret = rcli::get_caret_screen_position();
         rcli::overlay_show(rcli::OverlayState::Recording, caret);
         rcli_start_capture(g_dictate_engine);
     } else {
         g_dictate_recording = false;
+        rcli::hotkey_set_active(false);
         rcli::overlay_set_state(rcli::OverlayState::Transcribing);
         // Transcription is CPU-intensive — run on background queue to keep overlay animating
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{

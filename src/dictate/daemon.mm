@@ -159,8 +159,12 @@ int daemon_stop() {
 // ---------------------------------------------------------------------------
 
 int daemon_install_launchd(const char* rcli_path) {
-    // Read the plist template — look relative to the binary location
-    // The template is embedded inline here for robustness
+    // Resolve to absolute path so launchd can find the binary
+    char abs_path[PATH_MAX];
+    if (!realpath(rcli_path, abs_path)) {
+        fprintf(stderr, "daemon: failed to resolve path: %s\n", rcli_path);
+        return -1;
+    }
     static const char* plist_template = R"(<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -191,7 +195,7 @@ int daemon_install_launchd(const char* rcli_path) {
     std::string placeholder = "__RCLI_PATH__";
     auto pos = plist.find(placeholder);
     if (pos != std::string::npos) {
-        plist.replace(pos, placeholder.size(), rcli_path);
+        plist.replace(pos, placeholder.size(), abs_path);
     }
 
     // Ensure LaunchAgents directory exists
