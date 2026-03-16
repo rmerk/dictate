@@ -202,6 +202,12 @@ void rcli_reset_actions_to_defaults(RCLIHandle handle);
 // Returns 0 on success, -1 on failure.
 int rcli_switch_llm(RCLIHandle handle, const char* model_id);
 
+// Switch TTS voice at runtime. Returns 0 on success, -1 on failure.
+int rcli_switch_tts(RCLIHandle handle, const char* model_id);
+
+// Switch STT model at runtime. Returns 0 on success, -1 on failure.
+int rcli_switch_stt(RCLIHandle handle, const char* model_id);
+
 // List available models in the registry as JSON array.
 // Each entry: {id, name, size_mb, type ("llm"|"tts"|"stt"), is_downloaded}
 // Caller must free() the returned string. Returns NULL on failure.

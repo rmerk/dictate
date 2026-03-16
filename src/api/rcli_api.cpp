@@ -2917,6 +2917,64 @@ char* rcli_list_available_models(RCLIHandle handle) {
     return strdup(json.c_str());
 }
 
+int rcli_switch_tts(RCLIHandle handle, const char* model_id) {
+    if (!handle || !model_id) return -1;
+    auto* engine = static_cast<RCLIEngine*>(handle);
+    if (!engine->initialized) return -1;
+
+    std::lock_guard<std::mutex> lock(engine->mutex);
+
+    auto models = rcli::all_tts_models();
+    const auto* m = rcli::find_tts_by_id(model_id, models);
+    if (!m) {
+        LOG_ERROR("RCLI", "Unknown TTS model id: %s", model_id);
+        return -1;
+    }
+
+    if (!rcli::is_tts_installed(engine->models_dir, *m)) {
+        LOG_ERROR("RCLI", "TTS model not installed: %s", m->name.c_str());
+        return -1;
+    }
+
+    LOG_INFO("RCLI", "Switching TTS to %s (%s)", m->name.c_str(), m->dir_name.c_str());
+
+    engine->pipeline.set_tts_voice(m->name);
+    engine->tts_model_name = m->name;
+    rcli::write_selected_tts_id(model_id);
+
+    LOG_INFO("RCLI", "TTS switched to %s", m->name.c_str());
+    return 0;
+}
+
+int rcli_switch_stt(RCLIHandle handle, const char* model_id) {
+    if (!handle || !model_id) return -1;
+    auto* engine = static_cast<RCLIEngine*>(handle);
+    if (!engine->initialized) return -1;
+
+    std::lock_guard<std::mutex> lock(engine->mutex);
+
+    auto models = rcli::all_stt_models();
+    const auto* m = rcli::find_stt_by_id(model_id, models);
+    if (!m) {
+        LOG_ERROR("RCLI", "Unknown STT model id: %s", model_id);
+        return -1;
+    }
+
+    if (!rcli::is_stt_installed(engine->models_dir, *m)) {
+        LOG_ERROR("RCLI", "STT model not installed: %s", m->name.c_str());
+        return -1;
+    }
+
+    LOG_INFO("RCLI", "Switching STT to %s (%s)", m->name.c_str(), m->dir_name.c_str());
+
+    // No runtime STT reload method — persist and update name; takes effect on next restart.
+    engine->stt_model_name = m->name;
+    rcli::write_selected_stt_id(model_id);
+
+    LOG_INFO("RCLI", "STT selection persisted to %s (restart to apply)", m->name.c_str());
+    return 0;
+}
+
 } // extern "C"
 
 std::vector<rcli::ActionDef> rcli_get_all_action_defs(RCLIHandle handle) {
