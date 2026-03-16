@@ -82,35 +82,121 @@ rcli/
 
 ## EngineService — Concurrency Design
 
+### Deployment Target
+
+macOS 14 (Sonoma). This gives us `@Observable`, `MenuBarExtra(.window)`, `SMAppService`, and `CADisplayLink`. For Input Monitoring permission checks, use a CGEventTap probe (attempt to create a listen-only tap and check success/failure) since `CGPreflightListenEventAccess()` requires macOS 15.
+
 ### Protocol (v1→v2 Seam)
 
-Views depend on `EngineProviding` protocol, not the concrete class:
+Views depend on `EngineProviding` protocol, not the concrete class. The protocol covers the full C API surface organized by concern.
 
 ```swift
 @MainActor
 protocol EngineProviding: Observable {
+    // — Observable State (drives SwiftUI) —
     var pipelineState: PipelineState { get }
     var transcript: String { get }
+    var isTranscriptFinal: Bool { get }
     var lastResponse: String { get }
     var audioLevel: Float { get }
-    var engineInfo: EngineInfo? { get }
     var isReady: Bool { get }
 
-    func initialize(modelsDir: String) async throws
+    // — Event Streams (callbacks → Swift) —
+    var transcriptStream: AsyncStream<TranscriptEvent> { get }
+    var stateStream: AsyncStream<PipelineState> { get }
+    var toolTraceStream: AsyncStream<ToolTraceEvent> { get }
+    var responseStream: AsyncStream<String> { get }
+
+    // — Lifecycle —
+    func initialize(modelsDir: String, gpuLayers: Int) async throws
     func shutdown()
+
+    // — Voice Pipeline (live mode: mic → STT → LLM → TTS) —
     func startListening()
     func stopListening()
+    func processAndSpeak(_ text: String) async -> String  // streaming LLM → TTS
+    func stopProcessing()  // universal cancel
+
+    // — Push-to-Talk (dictation) —
     func startCapture()
     func stopAndTranscribe() async -> String
+
+    // — Text Commands —
     func processCommand(_ text: String) async -> String
-    func speak(_ text: String) async
+
+    // — TTS —
+    func speak(_ text: String) async  // uses rcli_speak_streaming (CoreAudio)
     func stopSpeaking()
+    var isSpeaking: Bool { get }
+
+    // — Models —
     func switchModel(_ id: String) async throws
+    var activeModel: String { get }
+    var activeTTSModel: String { get }
+    var activeSTTModel: String { get }
+    var activeEngine: String { get }
+
+    // — Personality —
+    var personality: String { get }
+    func setPersonality(_ key: String) throws
+
+    // — Actions —
+    func listActions() -> [ActionInfo]
+    func setActionEnabled(_ name: String, enabled: Bool)
+    func isActionEnabled(_ name: String) -> Bool
+    func saveActionPreferences() throws
+    func disableAllActions()
+    func resetActionsToDefaults()
+    var enabledActionCount: Int { get }
+
+    // — RAG —
+    func ragIngest(directory: String) async throws
+    func ragLoadIndex(path: String) async throws
+    func ragQuery(_ query: String) async -> String
+    func ragClear()
+
+    // — Voice Mode —
+    func startVoiceMode(wakePhrase: String) async throws
+    func stopVoiceMode()
+
+    // — Barge-In —
+    var bargeInEnabled: Bool { get set }
+    var interruptedResponse: String { get }
+
+    // — Conversation —
+    func clearHistory()
+
+    // — Info —
+    func getInfo() -> String  // JSON
+    func getContextInfo() -> (promptTokens: Int, contextSize: Int)
 }
 ```
 
 v1: `EngineService: EngineProviding` (direct C API calls)
 v2: `XPCEngineService: EngineProviding` (NSXPCConnection)
+
+Note: All C API calls that return `const char*` with "Caller must NOT free" must be immediately copied to a Swift `String` before leaving the `engineQueue` scope — the pointer may be invalidated on the next C API call.
+
+### Callback Delivery via AsyncStream
+
+C callbacks are bridged to Swift via `AsyncStream`. Each callback type gets its own stream. The `EngineService` creates continuations at init time and yields values from the static trampoline functions:
+
+```swift
+// In EngineService init:
+let (transcriptStream, transcriptContinuation) = AsyncStream.makeStream(of: TranscriptEvent.self)
+
+// In the static trampoline (fires on C++ thread):
+transcriptContinuation.yield(TranscriptEvent(text: str, isFinal: final))
+
+// In a SwiftUI view:
+.task {
+    for await event in engine.transcriptStream {
+        // update UI
+    }
+}
+```
+
+This replaces raw callback registration in the protocol. The streams are the Swift-side delivery mechanism. Views consume them via `.task` modifiers. The `@Observable` properties (transcript, pipelineState, etc.) are also updated from these streams for simple bindings.
 
 ### Threading Model
 
@@ -119,9 +205,10 @@ v2: `XPCEngineService: EngineProviding` (NSXPCConnection)
 ┌─────────────────────────────────────────────────┐
 │ All @Observable properties live here             │
 │ SwiftUI reads these safely                       │
+│ AsyncStream continuations yield from trampolines │
 └──────────┬──────────────────▲────────────────────┘
-           │ dispatch to      │ publish results
-           │ engineQueue      │ back on MainActor
+           │ dispatch to      │ publish results via
+           │ engineQueue      │ withCheckedContinuation
 engineQueue (serial DispatchQueue)
 ┌──────────▼──────────────────┼────────────────────┐
 │ All blocking C API calls run here                │
@@ -129,22 +216,49 @@ engineQueue (serial DispatchQueue)
 │ rcli_process_command()  — 1-5s (LLM inference)   │
 │ rcli_stop_capture_and_transcribe() — ~1s         │
 │ rcli_switch_llm()       — 1-2s (model swap)      │
+│                                                  │
+│ Pattern for async methods:                       │
+│   withCheckedContinuation { cont in              │
+│       engineQueue.async {                        │
+│           let result = rcli_xxx(handle, ...)     │
+│           let str = String(cString: result!)     │
+│           cont.resume(returning: str)            │
+│       }                                          │
+│   }                                              │
 └──────────────────────────────────────────────────┘
 
 C++ Engine Threads (STT, LLM, TTS workers)
 ┌──────────────────────────────────────────────────┐
-│ Callbacks fire here — never touch @Observable    │
-│ Use Task { @MainActor in ... } to publish        │
+│ Callbacks fire here — yield into AsyncStream     │
+│ continuations, then Task { @MainActor in }       │
+│ updates @Observable properties                   │
 └──────────────────────────────────────────────────┘
 ```
 
 ### C Callback Pattern
 
-Static trampoline functions with `Unmanaged` pointer for `user_data`. Callbacks dispatch to MainActor via `Task { @MainActor in }`. Critical: deregister all callbacks in `deinit` before destroying the engine handle to prevent dangling pointer crashes.
+Static trampoline functions with `Unmanaged.passRetained(self)` pointer for `user_data`. Trampolines yield into `AsyncStream` continuations and dispatch `@Observable` property updates via `Task { @MainActor in }`. Critical: deregister all callbacks in `deinit` before destroying the engine handle to prevent dangling pointer crashes.
 
 ### Audio Metering
 
 Poll `rcli_get_audio_level()` at 30Hz via `Timer.publish`. Standard pattern for audio metering (same as Logic Pro, GarageBand). `CADisplayLink` available on macOS 14+ as alternative.
+
+### Error Handling
+
+All `async throws` methods throw `RCLIError`:
+
+```swift
+enum RCLIError: LocalizedError {
+    case initFailed(String)        // rcli_init returned non-zero
+    case modelNotFound(String)     // model file missing
+    case modelLoadFailed(String)   // rcli_switch_llm failed
+    case permissionDenied(Permission) // mic or input monitoring
+    case engineNotReady            // called before init
+    case ragIngestFailed(String)   // document processing error
+}
+```
+
+UI surfaces errors as: banner in menu bar popover for persistent issues (permissions, init failure), inline error message in conversation panel for per-request failures (LLM OOM, model load), and toast/alert during onboarding for setup failures (download, permissions).
 
 ## UI Design
 
@@ -319,11 +433,28 @@ Based on reference mockups. These are stylistic guidelines, not pixel-exact wire
 - Accent color: system blue default. Waveform icon tinted per state in the menu bar.
 - Loading state icon: three-dot animation pattern (distinct from the other SF Symbol states)
 
+## Model Downloads
+
+Models are downloaded via `ModelDownloadService` using `URLSession` with background download support.
+
+- Source: same URLs as `scripts/download_models.sh` (Hugging Face CDN)
+- Storage: `~/Library/RCLI/models/` (shared with CLI, outside app sandbox)
+- Resume: `URLSessionDownloadTask` supports automatic resume on interruption
+- Integrity: SHA256 checksum verification after download (checksums in model registry)
+- Progress: published as `@Observable` properties for UI binding (per-model progress, overall progress)
+- Failure during onboarding: show retry button, allow skipping to download later from Settings > Models
+
+## Decisions (Resolved)
+
+- Conversation persistence: v1 does NOT persist across sessions. In-memory only via `rcli_clear_history()`. Persistence is a v2 feature.
+- Multiple panels: No. Single `Window` (not `WindowGroup`). One conversation panel instance.
+- RAG in app: CLI-only for v1. Protocol includes RAG methods for future use.
+- Voice mode: included in v1 as a menu bar quick action. Uses existing `rcli_start_voice_mode` / `rcli_stop_voice_mode`.
+- Hotkey conflicts: CGEventTap in listen-only mode does NOT consume the event — it passes through to the frontmost app. The app detects the combo and acts on it, but the key event still reaches the app. If conflicts arise, user can change the hotkey in Settings. Document known conflicts (⌘J = Safari Downloads) in the hotkey settings UI.
+- `rcli_speak` vs `rcli_speak_streaming`: always use `rcli_speak_streaming` (CoreAudio ring buffer). Never use `rcli_speak` (afplay subprocess) in the app.
+
 ## Open Questions
 
 - App name: RCLI? Something user-facing? (mockups explored "wave form" as a direction)
 - App icon: needs design — waveform motif is the leading direction
-- Conversation persistence: save history across sessions? How much?
-- Multiple windows: can user open multiple conversation panels?
-- RAG in the app: expose document ingestion in the UI, or keep it CLI-only for v1?
-- Voice mode in the app: always-listening wake word — include in v1 or defer?
+- App lifecycle edge cases: behavior on force-quit during recording, panel close during LLM generation, macOS sleep/wake with active session — need to define graceful degradation for each
