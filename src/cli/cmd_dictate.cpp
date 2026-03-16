@@ -52,13 +52,19 @@ static void on_hotkey() {
 }
 
 static int run_foreground(const Args& args) {
-    if (!rcli::hotkey_check_accessibility()) {
-        rcli::hotkey_request_accessibility();
-        fprintf(stderr, "Please grant Accessibility permission and restart.\n");
-        return 1;
-    }
-    if (check_mic_permission() != MIC_PERM_AUTHORIZED) {
-        request_mic_permission();
+    // Ensure stderr is line-buffered so log output appears in /tmp/rcli-dictate.log
+    // (stderr becomes fully buffered when redirected to a file by launchd)
+    setvbuf(stderr, nullptr, _IOLBF, 0);
+
+    auto mic_status = check_mic_permission();
+    if (mic_status != MIC_PERM_AUTHORIZED) {
+        // Use timeout version to avoid blocking forever in LaunchAgent context.
+        // If mic was previously authorized, the system auto-grants within seconds.
+        fprintf(stderr, "Requesting microphone permission (10s timeout)...\n");
+        if (!request_mic_permission_timeout(10)) {
+            fprintf(stderr, "Microphone permission not granted. Run: rcli dictate setup\n");
+            return 0;
+        }
     }
 
     std::string config_path = std::string(getenv("HOME") ? getenv("HOME") : "/tmp") + "/Library/RCLI/config";
@@ -79,10 +85,14 @@ static int run_foreground(const Args& args) {
     rcli::daemon_write_pid();
 
     rcli::overlay_init();
+    // Try creating the event tap directly — CGEventTapCreate is the ground truth
+    // for accessibility permission. AXIsProcessTrusted() is unreliable for
+    // unsigned/dev builds since macOS ties it to code signature, not path.
     if (!rcli::hotkey_start(g_dictate_config.hotkey, on_hotkey)) {
-        fprintf(stderr, "Failed to register hotkey. Check Accessibility permissions.\n");
+        fprintf(stderr, "Accessibility permission not granted. Run: rcli dictate setup\n");
         cleanup();
-        return 1;
+        // Exit 0 so KeepAlive(SuccessfulExit=false) doesn't restart endlessly
+        return 0;
     }
 
     printf("rcli dictate running. Hotkey: %s. Press Ctrl+C to stop.\n", g_dictate_config.hotkey.c_str());
@@ -130,6 +140,58 @@ int cmd_dictate(const Args& args) {
     if (args.arg1 == "uninstall") {
         printf("Removing dictation daemon from login items...\n");
         return rcli::daemon_uninstall_launchd();
+    }
+    if (args.arg1 == "setup") {
+        // One-command setup: stop old daemon, check permissions, install, start.
+        printf("Setting up dictation...\n\n");
+
+        // 1. Stop any running daemon + unload LaunchAgent
+        if (rcli::daemon_is_running()) {
+            printf("[1/4] Stopping existing daemon...\n");
+            rcli::daemon_stop();
+        } else {
+            printf("[1/4] No existing daemon running.\n");
+        }
+
+        // 2. Check microphone permission
+        printf("[2/4] Checking microphone permission...\n");
+        auto mic = check_mic_permission();
+        if (mic == MIC_PERM_AUTHORIZED) {
+            printf("  Microphone: granted\n");
+        } else {
+            printf("  Microphone: NOT granted (status=%d).\n", mic);
+            printf("  Enable in System Settings > Privacy & Security > Microphone.\n");
+            printf("  Then run 'rcli dictate setup' again.\n");
+            return 1;
+        }
+
+        // 3. Check accessibility permission
+        printf("[3/4] Checking accessibility permission...\n");
+        if (!rcli::hotkey_check_accessibility()) {
+            printf("  Accessibility: NOT granted.\n");
+            printf("  Enable in System Settings > Privacy & Security > Accessibility.\n");
+            printf("  Add: %s\n", args.argv0.c_str());
+            printf("  Then run 'rcli dictate setup' again.\n");
+            return 1;
+        }
+        printf("  Accessibility: granted\n");
+
+        // 4. Start daemon in background (inherits Terminal's permission context)
+        printf("[4/4] Starting daemon...\n");
+        int err = rcli::daemon_start_background(args.argv0.c_str());
+        if (err != 0) {
+            fprintf(stderr, "Failed to start daemon.\n");
+            return 1;
+        }
+
+        usleep(2000000); // 2 seconds for daemon to init
+        if (rcli::daemon_is_running()) {
+            printf("\nDictation is ready! Press Cmd+J to start dictating.\n");
+            printf("Note: daemon runs until logout. Use 'rcli dictate install' for auto-start at login.\n");
+        } else {
+            printf("\nDaemon exited. Check /tmp/rcli-dictate.log\n");
+        }
+        return 0;
     }
     if (args.arg1 == "config") {
         std::string config_path = std::string(getenv("HOME") ? getenv("HOME") : "/tmp") + "/Library/RCLI/config";
@@ -196,6 +258,7 @@ int cmd_dictate(const Args& args) {
 
     printf("Usage: rcli dictate <command>\n\n");
     printf("Commands:\n");
+    printf("  setup             Set up permissions and install (run after rebuild)\n");
     printf("  start             Start dictation daemon\n");
     printf("  start --foreground  Run in foreground (for debugging)\n");
     printf("  stop              Stop dictation daemon\n");

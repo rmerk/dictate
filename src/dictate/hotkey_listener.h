@@ -22,7 +22,12 @@ void hotkey_set_active(bool active);
 // Check if Accessibility permission is granted.
 bool hotkey_check_accessibility();
 
-// Prompt the user to grant Accessibility permission with a friendly dialog.
+// Prompt the system to pre-register this binary for Accessibility permission.
+// Opens System Settings to the Accessibility pane. Non-blocking.
 void hotkey_request_accessibility();
+
+// Block until Accessibility permission is granted or timeout (seconds) elapses.
+// Prints progress to stderr. Returns true if granted.
+bool hotkey_wait_for_accessibility(int timeout_secs);
 
 } // namespace rcli

@@ -159,6 +159,25 @@ int daemon_stop() {
 // ---------------------------------------------------------------------------
 
 int daemon_install_launchd(const char* rcli_path) {
+    // Stop any running daemon and unload existing plist first
+    if (daemon_is_running()) {
+        daemon_stop();
+    }
+    {
+        std::string old_plist = daemon_plist_path();
+        struct stat st{};
+        if (stat(old_plist.c_str(), &st) == 0) {
+            const char* lctl_argv[] = {"/bin/launchctl", "unload", old_plist.c_str(), nullptr};
+            pid_t lctl_pid = 0;
+            int err = posix_spawn(&lctl_pid, "/bin/launchctl", nullptr, nullptr,
+                                  const_cast<char* const*>(lctl_argv), environ);
+            if (err == 0) {
+                int status = 0;
+                waitpid(lctl_pid, &status, 0);
+            }
+        }
+    }
+
     // Resolve to absolute path so launchd can find the binary
     char abs_path[PATH_MAX];
     if (!realpath(rcli_path, abs_path)) {
@@ -179,9 +198,14 @@ int daemon_install_launchd(const char* rcli_path) {
         <string>--foreground</string>
     </array>
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
     <key>StandardOutPath</key>
     <string>/tmp/rcli-dictate.log</string>
     <key>StandardErrorPath</key>
@@ -227,6 +251,21 @@ int daemon_install_launchd(const char* rcli_path) {
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
             fprintf(stderr, "daemon: launchctl load exited with error\n");
             return -1;
+        }
+    }
+
+    // Kickstart ensures the daemon actually starts even if launchd thinks
+    // a previous run exited successfully (KeepAlive SuccessfulExit=false).
+    {
+        char uid_str[32];
+        snprintf(uid_str, sizeof(uid_str), "gui/%d/ai.runanywhere.rcli.dictate", getuid());
+        const char* kick_argv[] = {"/bin/launchctl", "kickstart", uid_str, nullptr};
+        pid_t kick_pid = 0;
+        posix_spawn(&kick_pid, "/bin/launchctl", nullptr, nullptr,
+                    const_cast<char* const*>(kick_argv), environ);
+        if (kick_pid > 0) {
+            int status = 0;
+            waitpid(kick_pid, &status, 0);
         }
     }
 

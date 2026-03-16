@@ -164,8 +164,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy /*proxy*/,
 bool hotkey_start(const std::string& hotkey_str, HotkeyCallback callback) {
     hotkey_stop(); // Clean up any previous tap
 
-    if (!hotkey_check_accessibility()) return false;
-
     CGKeyCode keycode = 0;
     CGEventFlags flags = 0;
     if (!parse_hotkey(hotkey_str, keycode, flags)) return false;
@@ -187,6 +185,8 @@ bool hotkey_start(const std::string& hotkey_str, HotkeyCallback callback) {
         event_tap_callback,
         nullptr);
 
+    // CGEventTapCreate is the ground truth for accessibility permission —
+    // AXIsProcessTrusted() is unreliable for unsigned/dev builds.
     if (!g_event_tap) return false;
 
     g_run_loop_src = CFMachPortCreateRunLoopSource(
@@ -236,24 +236,26 @@ bool hotkey_check_accessibility() {
 
 void hotkey_request_accessibility() {
     @autoreleasepool {
-        NSAlert* alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Accessibility Permission Required"];
-        [alert setInformativeText:
-            @"rcli needs Accessibility access to listen for the global "
-            @"dictation hotkey.\n\n"
-            @"Click \"Open Settings\" to grant permission, then restart rcli."];
-        [alert setAlertStyle:NSAlertStyleWarning];
-        [alert addButtonWithTitle:@"Open Settings"];
-        [alert addButtonWithTitle:@"Cancel"];
-
-        NSModalResponse response = [alert runModal];
-        if (response == NSAlertFirstButtonReturn) {
-            NSURL* url = [NSURL URLWithString:
-                @"x-apple.systempreferences:"
-                @"com.apple.preference.security?Privacy_Accessibility"];
-            [[NSWorkspace sharedWorkspace] openURL:url];
-        }
+        // Open System Settings directly to the Accessibility pane.
+        // We avoid AXIsProcessTrustedWithOptions(prompt: YES) because it tries to
+        // display a modal dialog, which blocks indefinitely in non-GUI contexts
+        // (e.g. LaunchAgent, background shell).
+        NSURL* url = [NSURL URLWithString:
+            @"x-apple.systempreferences:"
+            @"com.apple.preference.security?Privacy_Accessibility"];
+        [[NSWorkspace sharedWorkspace] openURL:url];
     }
+}
+
+bool hotkey_wait_for_accessibility(int timeout_secs) {
+    for (int i = 0; i < timeout_secs; ++i) {
+        if (AXIsProcessTrusted()) return true;
+        if (i % 5 == 0 && i > 0) {
+            fprintf(stderr, "  Still waiting for Accessibility permission... (%ds)\n", i);
+        }
+        sleep(1);
+    }
+    return AXIsProcessTrusted();
 }
 
 } // namespace rcli
