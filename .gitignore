@@ -46,6 +46,9 @@ benchmark_index/
 **/index/*.bin
 **/index/*.usearch
 
+# xcframework (built artifact)
+app/RCLIEngine.xcframework/
+
 # RAG benchmark docs (generated text corpus)
 benchmark_docs/
 
