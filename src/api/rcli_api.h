@@ -272,6 +272,10 @@ const char* rcli_get_stt_model(RCLIHandle handle);
 // Both output pointers are optional (pass NULL to skip).
 void rcli_get_context_info(RCLIHandle handle, int* out_prompt_tokens, int* out_ctx_size);
 
+// Deregister all callbacks under engine mutex, wait for any in-flight
+// callback to complete. Must be called before rcli_destroy().
+void rcli_deregister_all_callbacks(RCLIHandle handle);
+
 #ifdef __cplusplus
 }
 #endif

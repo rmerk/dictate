@@ -2852,6 +2852,23 @@ void rcli_get_context_info(RCLIHandle handle, int* out_prompt_tokens, int* out_c
     }
 }
 
+void rcli_deregister_all_callbacks(RCLIHandle handle) {
+    if (!handle) return;
+    auto* engine = static_cast<RCLIEngine*>(handle);
+    std::lock_guard<std::mutex> lock(engine->mutex);
+    engine->transcript_cb = nullptr;
+    engine->transcript_ud = nullptr;
+    engine->state_cb = nullptr;
+    engine->state_ud = nullptr;
+    engine->action_cb = nullptr;
+    engine->action_ud = nullptr;
+    engine->tool_trace_cb = nullptr;
+    engine->tool_trace_ud = nullptr;
+    engine->pipeline.set_transcript_callback(nullptr);
+    engine->pipeline.set_response_callback(nullptr);
+    engine->pipeline.set_state_callback(nullptr);
+}
+
 } // extern "C"
 
 std::vector<rcli::ActionDef> rcli_get_all_action_defs(RCLIHandle handle) {
