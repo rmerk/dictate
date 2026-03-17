@@ -46,6 +46,13 @@ benchmark_index/
 **/index/*.bin
 **/index/*.usearch
 
+# xcframework (built artifact)
+app/RCLIEngine.xcframework/
+
+# Xcode user data
+**/xcuserdata/
+**/*.xcuserstate
+
 # RAG benchmark docs (generated text corpus)
 benchmark_docs/
 
@@ -59,3 +66,9 @@ benchmark_docs/
 # CMake FetchContent
 _deps/
 EXTERNAL/
+
+# Superpowers brainstorm artifacts
+.superpowers/
+
+# Profiling data
+*.profraw

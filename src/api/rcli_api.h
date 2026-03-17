@@ -49,6 +49,16 @@ void rcli_destroy(RCLIHandle handle);
 // Returns 0 on success, non-zero on failure.
 int rcli_init(RCLIHandle handle, const char* models_dir, int gpu_layers);
 
+/**
+ * Initialize engine with STT and VAD only (no LLM, no TTS).
+ * Used by dictation daemon for minimal memory footprint (~640MB).
+ * @param handle Engine handle from rcli_create()
+ * @param models_dir Path to models directory (e.g., ~/Library/RCLI/models)
+ * @param gpu_layers Number of GPU layers for STT (default 99)
+ * @return 0 on success, -1 on error
+ */
+int rcli_init_stt_only(RCLIHandle handle, const char* models_dir, int gpu_layers);
+
 // Check if engine is initialized and ready
 int rcli_is_ready(RCLIHandle handle);
 
@@ -192,6 +202,17 @@ void rcli_reset_actions_to_defaults(RCLIHandle handle);
 // Returns 0 on success, -1 on failure.
 int rcli_switch_llm(RCLIHandle handle, const char* model_id);
 
+// Switch TTS voice at runtime. Returns 0 on success, -1 on failure.
+int rcli_switch_tts(RCLIHandle handle, const char* model_id);
+
+// Switch STT model at runtime. Returns 0 on success, -1 on failure.
+int rcli_switch_stt(RCLIHandle handle, const char* model_id);
+
+// List available models in the registry as JSON array.
+// Each entry: {id, name, size_mb, type ("llm"|"tts"|"stt"), is_downloaded}
+// Caller must free() the returned string. Returns NULL on failure.
+char* rcli_list_available_models(RCLIHandle handle);
+
 // --- Barge-In & Voice Mode ---
 
 // Enable/disable voice barge-in (user can interrupt TTS mid-speech)
@@ -315,6 +336,10 @@ int rcli_vlm_exit(RCLIHandle handle);
 int rcli_vlm_analyze_stream(RCLIHandle handle, const char* image_path,
                             const char* prompt,
                             RCLIEventCallback callback, void* user_data);
+
+// Deregister all callbacks under engine mutex, wait for any in-flight
+// callback to complete. Must be called before rcli_destroy().
+void rcli_deregister_all_callbacks(RCLIHandle handle);
 
 #ifdef __cplusplus
 }

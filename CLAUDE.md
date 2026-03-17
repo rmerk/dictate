@@ -37,6 +37,11 @@ cmake --build . -j$(sysctl -n hw.ncpu)
 ./build/rcli rag ingest ~/Documents             # Index docs for RAG
 ./build/rcli info                               # Show engine info
 ./build/rcli cleanup                            # Remove unused models
+./build/rcli dictate setup                      # Check permissions + start daemon (run after rebuild)
+./build/rcli dictate start                      # Start dictation daemon (global hotkey)
+./build/rcli dictate install                    # Auto-start dictation at login (LaunchAgent)
+./build/rcli dictate stop                       # Stop dictation daemon
+./build/rcli dictate config                     # Edit hotkey, paste, notification settings
 ```
 
 ## Tests
@@ -69,6 +74,7 @@ src/
 ├── actions/        43 macOS action implementations (AppleScript + shell)
 ├── api/            C API (rcli_api.h/.cpp) — the engine's public interface
 ├── cli/            main.cpp, TUI dashboard (FTXUI), model pickers, help, setup commands
+├── dictate/        Dictation mode: daemon, global hotkey (CGEventTap), overlay (AppKit), caret detection, paste engine
 ├── models/         Model registries (LLM, TTS, STT) with on-demand download
 └── test/           Pipeline test harness
 ```
@@ -84,6 +90,21 @@ src/
 - **Double-buffered TTS**: TTS synthesizes the next sentence while current one plays.
 - **System prompt KV caching**: Reuses llama.cpp KV cache state across queries.
 - **Hybrid tool calling**: Tier 1 keyword match + Tier 2 LLM-based extraction.
+
+### Dictate Subsystem
+
+Background daemon with global hotkey (default Cmd+J) for system-wide voice dictation.
+- `src/dictate/daemon.mm` — LaunchAgent plist generation, PID management, posix_spawn
+- `src/dictate/hotkey_listener.mm` — CGEventTap for global keyboard events (requires Accessibility permission)
+- `src/dictate/overlay.mm` — AppKit overlay (NSVisualEffectView + custom NSView drawing)
+- Config stored at `~/Library/RCLI/config`, LaunchAgent at `~/Library/LaunchAgents/ai.runanywhere.rcli.dictate.plist`
+- **Gotcha:** SF Symbols need `setTemplate:YES` + lockFocus tinting to change color in AppKit
+- **Gotcha:** LaunchAgent plist paths must be absolute (use `realpath`); relative paths cause `launchctl load` to fail
+- **Gotcha:** Rebuilds invalidate ALL macOS TCC permissions (Accessibility, Microphone) because unsigned binaries are identified by code hash. Run `rcli dictate setup` from Terminal after each rebuild — `posix_spawn` inherits Terminal's permission context, unlike LaunchAgent
+- **Gotcha:** Use `CGEventTapCreate` success/failure as the ground truth for Accessibility permission — `AXIsProcessTrusted()` is unreliable for unsigned dev builds, and `AXIsProcessTrustedWithOptions(prompt: YES)` blocks indefinitely in non-GUI contexts
+- **Gotcha:** LaunchAgent stderr is fully buffered when redirected to a file — use `setvbuf(stderr, nullptr, _IOLBF, 0)` early in daemon startup
+- **Gotcha:** Use `KeepAlive: {SuccessfulExit: false}` + `ThrottleInterval` in LaunchAgent plist — `KeepAlive: true` causes infinite restart loops on permission failures. After exit-0, `launchctl load` won't re-run — use `launchctl kickstart gui/<uid>/<label>`
+- **Gotcha:** Avoid `dispatch_semaphore_wait(DISPATCH_TIME_FOREVER)` for permission requests in daemon context — system can't show dialogs when launched by launchd. Use timeout variant
 
 ### Threading Model (Live Mode)
 

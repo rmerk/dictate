@@ -24,7 +24,7 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     add_compile_options(-mavx2 -mfma -mf16c)
 endif()
 
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
+if(CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT RCLI_BUILD_STATIC)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT LTO_SUPPORTED)
     if(LTO_SUPPORTED)
@@ -57,7 +57,10 @@ set(SHERPA_ONNX_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_PORTAUDIO OFF CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_WEBSOCKET OFF CACHE BOOL "" FORCE)
-set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+# Allow xcframework / static builds to override shared libs
+if(NOT RCLI_BUILD_STATIC)
+    set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/deps/sherpa-onnx/cmake/Modules")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/deps/sherpa-onnx/cmake")
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/deps/sherpa-onnx)
@@ -138,10 +141,37 @@ add_library(rcli STATIC
     src/actions/communication_actions.cpp
     src/actions/browser_actions.cpp
     src/api/rcli_api.cpp
+
+    # --- Dictation hotkey listener ---
+    src/dictate/hotkey_listener.mm
+    src/dictate/caret_position.mm
+    src/dictate/overlay.mm
+    src/dictate/paste_engine.mm
+    src/dictate/daemon.mm
+
+    # --- C bridge wrappers ---
+    src/bridge/rcli_overlay_bridge.mm
+    src/bridge/rcli_paste_bridge.mm
+    src/bridge/rcli_caret_bridge.mm
+    src/bridge/rcli_hotkey_bridge.mm
 )
 
 set_source_files_properties(src/audio/mic_permission.mm src/audio/camera_capture.mm src/audio/screen_capture.mm
     PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/dictate/hotkey_listener.mm
+    PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/dictate/caret_position.mm
+    PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/dictate/overlay.mm
+    PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/dictate/paste_engine.mm
+    PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/dictate/daemon.mm
+    PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/bridge/rcli_overlay_bridge.mm PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/bridge/rcli_paste_bridge.mm PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/bridge/rcli_caret_bridge.mm PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/bridge/rcli_hotkey_bridge.mm PROPERTIES LANGUAGE CXX)
 
 target_include_directories(rcli PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -168,6 +198,9 @@ target_link_libraries(rcli PUBLIC
     "-framework CoreVideo"
     "-framework CoreGraphics"
     "-framework IOKit"
+    "-framework ApplicationServices"
+    "-framework Carbon"
+    "-framework AppKit"
 )
 
 if(GGML_METAL)
@@ -185,6 +218,7 @@ target_compile_options(rcli PRIVATE
 # =============================================================================
 add_executable(rcli_cli
     src/cli/main.cpp
+    src/cli/cmd_dictate.cpp
 )
 
 set_target_properties(rcli_cli PROPERTIES OUTPUT_NAME "rcli")
@@ -266,3 +300,24 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_link_options(rcli_cli PRIVATE -Wl,-dead_strip)
     target_link_options(rcli_test PRIVATE -Wl,-dead_strip)
 endif()
+
+# Dictate config test
+add_executable(test_dictate_config tests/test_dictate_config.cpp)
+target_include_directories(test_dictate_config PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+# Daemon test
+add_executable(test_daemon tests/test_daemon.cpp)
+target_include_directories(test_daemon PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_daemon rcli)
+
+# Caret position test
+add_executable(test_caret_position tests/test_caret_position.mm)
+set_source_files_properties(tests/test_caret_position.mm PROPERTIES LANGUAGE CXX)
+target_include_directories(test_caret_position PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_caret_position rcli)
+
+# Paste engine test
+add_executable(test_paste_engine tests/test_paste_engine.mm)
+set_source_files_properties(tests/test_paste_engine.mm PROPERTIES LANGUAGE CXX)
+target_include_directories(test_paste_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_paste_engine rcli)

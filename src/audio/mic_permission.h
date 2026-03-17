@@ -17,6 +17,10 @@ MicPermissionStatus check_mic_permission(void);
 // Returns 1 if granted, 0 if denied.
 int request_mic_permission(void);
 
+// Non-blocking: request mic permission with a timeout (seconds).
+// Returns 1 if granted, 0 if timed out or denied.
+int request_mic_permission_timeout(int timeout_secs);
+
 #ifdef __cplusplus
 }
 #endif

@@ -668,6 +668,113 @@ int rcli_init(RCLIHandle handle, const char* models_dir, int gpu_layers) {
     return 0;
 }
 
+int rcli_init_stt_only(RCLIHandle handle, const char* models_dir, int gpu_layers) {
+    if (!handle || !models_dir) return -1;
+    auto* engine = static_cast<RCLIEngine*>(handle);
+
+    std::string dir(models_dir);
+    engine->models_dir = dir;
+
+    PipelineConfig config;
+
+    // STT-only mode: skip LLM, TTS, MetalRT entirely in orchestrator
+    config.stt_only = true;
+
+    // --- STT (Zipformer streaming — always active for live mic) ---
+    config.stt.encoder_path = dir + "/zipformer/encoder-epoch-99-avg-1.int8.onnx";
+    config.stt.decoder_path = dir + "/zipformer/decoder-epoch-99-avg-1.int8.onnx";
+    config.stt.joiner_path  = dir + "/zipformer/joiner-epoch-99-avg-1.int8.onnx";
+    config.stt.tokens_path  = dir + "/zipformer/tokens.txt";
+    config.stt.sample_rate  = 16000;
+    config.stt.num_threads  = 2;
+
+    // --- Offline STT (resolve: user preference > auto-detect highest priority) ---
+    {
+        auto stt_models = rcli::all_stt_models();
+        const auto* active_stt = rcli::resolve_active_stt(dir, stt_models);
+        if (!active_stt) active_stt = rcli::get_default_offline_stt(stt_models);
+
+        if (active_stt && active_stt->backend == "nemo_transducer") {
+            std::string base = dir + "/" + active_stt->dir_name;
+            config.offline_stt.backend = OfflineSttBackend::NEMO_TRANSDUCER;
+            config.offline_stt.transducer_encoder_path = base + "/" + active_stt->encoder_file;
+            config.offline_stt.transducer_decoder_path = base + "/" + active_stt->decoder_file;
+            config.offline_stt.transducer_joiner_path  = base + "/" + active_stt->joiner_file;
+            config.offline_stt.tokens_path  = base + "/" + active_stt->tokens_file;
+            config.offline_stt.sample_rate  = 16000;
+            config.offline_stt.num_threads  = 4;
+            engine->using_parakeet = true;
+            engine->stt_model_name = active_stt->name;
+            LOG_DEBUG("RCLI", "STT-only: Using %s for offline STT", active_stt->name.c_str());
+        } else if (active_stt) {
+            std::string base = dir + "/" + active_stt->dir_name;
+            config.offline_stt.backend = OfflineSttBackend::WHISPER;
+            config.offline_stt.encoder_path = base + "/" + active_stt->encoder_file;
+            config.offline_stt.decoder_path = base + "/" + active_stt->decoder_file;
+            config.offline_stt.tokens_path  = base + "/" + active_stt->tokens_file;
+            config.offline_stt.language     = "en";
+            config.offline_stt.task         = "transcribe";
+            config.offline_stt.tail_paddings = 500;
+            config.offline_stt.sample_rate  = 16000;
+            config.offline_stt.num_threads  = 4;
+            engine->using_parakeet = false;
+            engine->stt_model_name = active_stt->name;
+            LOG_DEBUG("RCLI", "STT-only: Using %s for offline STT", active_stt->name.c_str());
+        } else {
+            config.offline_stt.backend = OfflineSttBackend::WHISPER;
+            config.offline_stt.encoder_path = dir + "/whisper-base.en/base.en-encoder.int8.onnx";
+            config.offline_stt.decoder_path = dir + "/whisper-base.en/base.en-decoder.int8.onnx";
+            config.offline_stt.tokens_path  = dir + "/whisper-base.en/base.en-tokens.txt";
+            config.offline_stt.language     = "en";
+            config.offline_stt.task         = "transcribe";
+            config.offline_stt.tail_paddings = 500;
+            config.offline_stt.sample_rate  = 16000;
+            config.offline_stt.num_threads  = 4;
+            engine->using_parakeet = false;
+        }
+    }
+
+    // Skip LLM — not needed for dictation mode
+    // Skip TTS — not needed for dictation mode
+
+    // --- VAD ---
+    config.vad.model_path           = dir + "/silero_vad.onnx";
+    config.vad.threshold            = 0.5f;
+    config.vad.min_silence_duration = 0.5f;
+    config.vad.min_speech_duration  = 0.25f;
+    config.vad.window_size          = 512;
+    config.vad.sample_rate          = 16000;
+    config.vad.num_threads          = 1;
+
+    // --- Audio mode ---
+    config.audio.capture_rate  = 16000;
+    config.audio.playback_rate = 22050;
+#if defined(RASTACK_FILE_AUDIO_ONLY)
+    config.audio.mode = AudioMode::FILE_MODE;
+#else
+    config.audio.mode = AudioMode::LIVE_MODE;
+#endif
+
+    LOG_DEBUG("RCLI", "Initializing pipeline (STT-only mode)...");
+    // Suppress sherpa-onnx's noisy stderr validation messages during init
+    int saved_stderr = dup(STDERR_FILENO);
+    {
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull >= 0) { dup2(devnull, STDERR_FILENO); close(devnull); }
+    }
+    bool init_ok = engine->pipeline.init(config);
+    if (saved_stderr >= 0) { dup2(saved_stderr, STDERR_FILENO); close(saved_stderr); }
+    if (!init_ok) {
+        LOG_ERROR("RCLI", "Failed to initialize pipeline (STT-only mode)");
+        return -1;
+    }
+
+    engine->initialized = true;
+
+    LOG_DEBUG("RCLI", "STT-only pipeline initialized successfully");
+    return 0;
+}
+
 int rcli_is_ready(RCLIHandle handle) {
     if (!handle) return 0;
     auto* engine = static_cast<RCLIEngine*>(handle);
@@ -3183,6 +3290,129 @@ int rcli_vlm_analyze_stream(RCLIHandle handle, const char* image_path,
     }
 
     return engine->last_vlm_response.find("Error:") == 0 ? -1 : 0;
+}
+
+void rcli_deregister_all_callbacks(RCLIHandle handle) {
+    if (!handle) return;
+    auto* engine = static_cast<RCLIEngine*>(handle);
+    std::lock_guard<std::mutex> lock(engine->mutex);
+    engine->transcript_cb = nullptr;
+    engine->transcript_ud = nullptr;
+    engine->state_cb = nullptr;
+    engine->state_ud = nullptr;
+    engine->action_cb = nullptr;
+    engine->action_ud = nullptr;
+    engine->tool_trace_cb = nullptr;
+    engine->tool_trace_ud = nullptr;
+    engine->pipeline.set_transcript_callback(nullptr);
+    engine->pipeline.set_response_callback(nullptr);
+    engine->pipeline.set_state_callback(nullptr);
+}
+
+char* rcli_list_available_models(RCLIHandle handle) {
+    if (!handle) return nullptr;
+    auto* engine = static_cast<RCLIEngine*>(handle);
+
+    std::string json = "[";
+    bool first = true;
+
+    // LLM models
+    for (const auto& m : rcli::all_models()) {
+        if (!first) json += ",";
+        first = false;
+        std::string path = engine->models_dir + "/" + m.filename;
+        bool downloaded = (access(path.c_str(), F_OK) == 0);
+        json += "{\"id\":\"" + m.id + "\","
+                "\"name\":\"" + m.name + "\","
+                "\"size_mb\":" + std::to_string(m.size_mb) + ","
+                "\"type\":\"llm\","
+                "\"is_downloaded\":" + (downloaded ? "true" : "false") + "}";
+    }
+
+    // TTS models
+    for (const auto& m : rcli::all_tts_models()) {
+        if (!first) json += ",";
+        first = false;
+        bool downloaded = rcli::is_tts_installed(engine->models_dir, m);
+        json += "{\"id\":\"" + m.id + "\","
+                "\"name\":\"" + m.name + "\","
+                "\"size_mb\":" + std::to_string(m.size_mb) + ","
+                "\"type\":\"tts\","
+                "\"is_downloaded\":" + (downloaded ? "true" : "false") + "}";
+    }
+
+    // STT models
+    for (const auto& m : rcli::all_stt_models()) {
+        if (!first) json += ",";
+        first = false;
+        bool downloaded = rcli::is_stt_installed(engine->models_dir, m);
+        json += "{\"id\":\"" + m.id + "\","
+                "\"name\":\"" + m.name + "\","
+                "\"size_mb\":" + std::to_string(m.size_mb) + ","
+                "\"type\":\"stt\","
+                "\"is_downloaded\":" + (downloaded ? "true" : "false") + "}";
+    }
+
+    json += "]";
+    return strdup(json.c_str());
+}
+
+int rcli_switch_tts(RCLIHandle handle, const char* model_id) {
+    if (!handle || !model_id) return -1;
+    auto* engine = static_cast<RCLIEngine*>(handle);
+    if (!engine->initialized) return -1;
+
+    std::lock_guard<std::mutex> lock(engine->mutex);
+
+    auto models = rcli::all_tts_models();
+    const auto* m = rcli::find_tts_by_id(model_id, models);
+    if (!m) {
+        LOG_ERROR("RCLI", "Unknown TTS model id: %s", model_id);
+        return -1;
+    }
+
+    if (!rcli::is_tts_installed(engine->models_dir, *m)) {
+        LOG_ERROR("RCLI", "TTS model not installed: %s", m->name.c_str());
+        return -1;
+    }
+
+    LOG_INFO("RCLI", "Switching TTS to %s (%s)", m->name.c_str(), m->dir_name.c_str());
+
+    engine->pipeline.set_tts_voice(m->name);
+    engine->tts_model_name = m->name;
+    rcli::write_selected_tts_id(model_id);
+
+    LOG_INFO("RCLI", "TTS switched to %s", m->name.c_str());
+    return 0;
+}
+
+int rcli_switch_stt(RCLIHandle handle, const char* model_id) {
+    if (!handle || !model_id) return -1;
+    auto* engine = static_cast<RCLIEngine*>(handle);
+    if (!engine->initialized) return -1;
+
+    std::lock_guard<std::mutex> lock(engine->mutex);
+
+    auto models = rcli::all_stt_models();
+    const auto* m = rcli::find_stt_by_id(model_id, models);
+    if (!m) {
+        LOG_ERROR("RCLI", "Unknown STT model id: %s", model_id);
+        return -1;
+    }
+
+    if (!rcli::is_stt_installed(engine->models_dir, *m)) {
+        LOG_ERROR("RCLI", "STT model not installed: %s", m->name.c_str());
+        return -1;
+    }
+
+    LOG_INFO("RCLI", "Switching STT to %s (%s)", m->name.c_str(), m->dir_name.c_str());
+
+    // No runtime STT reload method — persist and update name; takes effect on next restart.
+    engine->stt_model_name = m->name;
+    rcli::write_selected_stt_id(model_id);
+
+    LOG_INFO("RCLI", "STT selection persisted to %s (restart to apply)", m->name.c_str());
+    return 0;
 }
 
 } // extern "C"

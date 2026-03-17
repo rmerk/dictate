@@ -21,6 +21,7 @@
 #include "cli/setup_cmds.h"
 #include "cli/visualizer.h"
 #include "cli/tui_app.h"
+#include "cli/cmd_dictate.h"
 #include "pipeline/orchestrator.h"
 #include "engines/metalrt_loader.h"
 #include "audio/audio_io.h"
@@ -1156,6 +1157,7 @@ int main(int argc, char** argv) {
         return cmd_interactive(args);
     }
 
+    if (args.command == "dictate")     return cmd_dictate(args);
     if (args.command == "listen")      return cmd_listen(args);
     if (args.command == "ask")         return cmd_ask(args);
     if (args.command == "mic-test")    return cmd_mic_test(args);
