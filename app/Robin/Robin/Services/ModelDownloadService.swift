@@ -19,13 +19,13 @@ final class ModelDownloadService: NSObject {
 
     private var session: URLSession!
     private var continuations: [String: CheckedContinuation<Void, Error>] = [:]
+    private var destinationFilenames: [String: String] = [:]
     private let modelsDir: String
 
     init(modelsDir: String = NSString(string: "~/Library/RCLI/models").expandingTildeInPath) {
         self.modelsDir = modelsDir
         super.init()
-        let config = URLSessionConfiguration.background(withIdentifier: "ai.rcli.modeldownload")
-        config.isDiscretionary = false
+        let config = URLSessionConfiguration.default
         session = URLSession(configuration: config, delegate: self, delegateQueue: .main)
 
         // Create models directory
@@ -33,11 +33,12 @@ final class ModelDownloadService: NSObject {
             atPath: modelsDir, withIntermediateDirectories: true)
     }
 
-    func download(modelId: String, name: String, url: URL) async throws {
+    func download(modelId: String, name: String, url: URL, destinationFilename: String) async throws {
         let task = session.downloadTask(with: url)
         task.taskDescription = modelId
         activeDownloads[modelId] = DownloadProgress(
             modelId: modelId, modelName: name, totalBytes: 0)
+        destinationFilenames[modelId] = destinationFilename
 
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             continuations[modelId] = cont
@@ -46,13 +47,57 @@ final class ModelDownloadService: NSObject {
     }
 
     func cancelDownload(modelId: String) {
-        session.getAllTasks { tasks in
+        activeDownloads.removeValue(forKey: modelId)
+        destinationFilenames.removeValue(forKey: modelId)
+        session.getAllTasks { [weak self] tasks in
             tasks.first { $0.taskDescription == modelId }?.cancel()
         }
-        activeDownloads.removeValue(forKey: modelId)
-        if let cont = continuations.removeValue(forKey: modelId) {
-            cont.resume(throwing: CancellationError())
+        // Do NOT resume continuation here — let didCompleteWithError handle it
+        // with NSURLErrorCancelled. This prevents double-resume crashes.
+    }
+
+    func extractArchive(archivePath: String, to directory: String,
+                        archiveDirName: String?, renameTo localPath: String) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        process.arguments = ["xjf", archivePath, "-C", directory]
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            // Clean up partial extraction
+            let extractedDir = archiveDirName ?? localPath
+            let partialPath = (directory as NSString).appendingPathComponent(extractedDir)
+            try? FileManager.default.removeItem(atPath: partialPath)
+            throw RCLIError.commandFailed("Archive extraction failed (exit \(process.terminationStatus))")
         }
+
+        // Rename archive dir to expected localPath if needed
+        if let archiveDir = archiveDirName, archiveDir != localPath {
+            let srcPath = (directory as NSString).appendingPathComponent(archiveDir)
+            let dstPath = (directory as NSString).appendingPathComponent(localPath)
+            if FileManager.default.fileExists(atPath: dstPath) {
+                try FileManager.default.removeItem(atPath: dstPath)
+            }
+            try FileManager.default.moveItem(atPath: srcPath, toPath: dstPath)
+        }
+
+        // Verify extraction succeeded
+        let finalPath = (directory as NSString).appendingPathComponent(localPath)
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: finalPath, isDirectory: &isDir),
+              isDir.boolValue else {
+            throw RCLIError.commandFailed("Extracted directory not found: \(localPath)")
+        }
+
+        // Only delete archive after verified extraction
+        try? FileManager.default.removeItem(atPath: archivePath)
+    }
+
+    func deleteModel(path: String, isDirectory: Bool) throws {
+        let fullPath = (modelsDir as NSString).appendingPathComponent(path)
+        guard FileManager.default.fileExists(atPath: fullPath) else { return }
+        try FileManager.default.removeItem(atPath: fullPath)
     }
 
     var hasActiveDownloads: Bool { !activeDownloads.isEmpty }
@@ -63,8 +108,16 @@ extension ModelDownloadService: URLSessionDownloadDelegate {
                                 downloadTask: URLSessionDownloadTask,
                                 didFinishDownloadingTo location: URL) {
         let modelId = downloadTask.taskDescription ?? ""
+
+        // Use the catalog-specified filename, not suggestedFilename
+        let filename: String
+        if Thread.isMainThread {
+            filename = MainActor.assumeIsolated { destinationFilenames[modelId] ?? modelId }
+        } else {
+            filename = DispatchQueue.main.sync { destinationFilenames[modelId] ?? modelId }
+        }
         let dest = URL(fileURLWithPath: modelsDir)
-            .appendingPathComponent(downloadTask.response?.suggestedFilename ?? modelId)
+            .appendingPathComponent(filename)
 
         do {
             if FileManager.default.fileExists(atPath: dest.path) {
@@ -73,6 +126,7 @@ extension ModelDownloadService: URLSessionDownloadDelegate {
             try FileManager.default.moveItem(at: location, to: dest)
 
             Task { @MainActor in
+                self.destinationFilenames.removeValue(forKey: modelId)
                 self.activeDownloads.removeValue(forKey: modelId)
                 self.completedDownloads.insert(modelId)
                 self.continuations.removeValue(forKey: modelId)?.resume()

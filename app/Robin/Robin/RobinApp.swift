@@ -1,93 +1,39 @@
 import SwiftUI
 import CRCLIEngine
 
-@main
-struct RobinApp: App {
-    @State private var engine = EngineService()
-    @State private var hotkey = HotkeyService()
-    @State private var overlay = OverlayService()
-    @State private var permissions = PermissionService()
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
-    @State private var showOnboarding = false
+class AppDelegate: NSObject, NSApplicationDelegate {
+    let engine = EngineService()
+    let hotkey = HotkeyService()
+    let overlay = OverlayService()
+    let permissions = PermissionService()
+    let downloads = ModelDownloadService()
 
-    var body: some Scene {
-        MenuBarExtra {
-            MenuBarView()
-                .environment(engine)
-                .environment(hotkey)
-                .environment(overlay)
-                .environment(permissions)
-                .task { await startApp() }
-                .sheet(isPresented: $showOnboarding) {
-                    OnboardingView(isPresented: $showOnboarding)
-                        .environment(engine)
-                        .environment(permissions)
-                        .onDisappear { hasCompletedOnboarding = true }
-                }
-        } label: {
-            Image(systemName: menuBarIcon)
-        }
-        .menuBarExtraStyle(.window)
-
-        Window("RCLI", id: "panel") {
-            PanelView()
-                .environment(engine)
-        }
-        .defaultSize(width: 420, height: 600)
-        .windowResizability(.contentMinSize)
-
-        Settings {
-            SettingsView()
-                .environment(engine)
-                .environment(hotkey)
-                .environment(permissions)
-        }
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { await startApp() }
     }
 
-    private var menuBarIcon: String {
-        switch engine.lifecycleState {
-        case .loading: return "circle.dashed"
-        case .ready:
-            switch engine.pipelineState {
-            case .listening: return "waveform"
-            case .processing, .speaking: return "bolt.fill"
-            default: return "waveform"
-            }
-        case .error: return "exclamationmark.triangle"
-        }
-    }
-
+    @MainActor
     private func startApp() async {
-        // Show onboarding on first launch
-        if !hasCompletedOnboarding {
-            showOnboarding = true
-        }
-
-        // Initialize overlay
         overlay.initialize()
-
-        // Start permission polling
         permissions.startPolling()
 
-        // Initialize engine
         let modelsDir = NSString(string: "~/Library/RCLI/models").expandingTildeInPath
         do {
             try await engine.initialize(modelsDir: modelsDir, gpuLayers: 99)
         } catch {
-            return // lifecycleState is already .error
+            return
         }
 
-        // Start hotkey if accessibility granted
         if permissions.accessibilityGranted {
             setupHotkey()
         }
     }
 
-    private func setupHotkey() {
+    @MainActor
+    func setupHotkey() {
         hotkey.onHotkeyPressed = { [engine, hotkey, overlay] in
             Task { @MainActor in
                 if hotkey.isRecording {
-                    // Stop recording
                     hotkey.setRecording(false)
                     overlay.setState(.transcribing)
 
@@ -101,7 +47,6 @@ struct RobinApp: App {
                     }
                     overlay.dismiss()
                 } else {
-                    // Start recording
                     var caretX: Double = 0
                     var caretY: Double = 0
                     let hasCaret = rcli_get_caret_position(&caretX, &caretY)
@@ -118,5 +63,67 @@ struct RobinApp: App {
             }
         }
         _ = hotkey.start()
+    }
+}
+
+@main
+struct RobinApp: App {
+    @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+
+    var body: some Scene {
+        MenuBarExtra {
+            MenuBarView()
+                .environment(appDelegate.engine)
+                .environment(appDelegate.hotkey)
+                .environment(appDelegate.overlay)
+                .environment(appDelegate.permissions)
+                .environment(appDelegate.downloads)
+        } label: {
+            Image(systemName: menuBarIcon)
+        }
+        .menuBarExtraStyle(.window)
+
+        Window("Welcome to RCLI", id: "onboarding") {
+            OnboardingView(isPresented: Binding(
+                get: { !hasCompletedOnboarding },
+                set: { newValue in
+                    if !newValue { hasCompletedOnboarding = true }
+                }
+            ))
+            .environment(appDelegate.engine)
+            .environment(appDelegate.permissions)
+            .environment(appDelegate.downloads)
+        }
+        .defaultSize(width: 560, height: 420)
+        .windowResizability(.contentSize)
+
+        Window("RCLI", id: "panel") {
+            PanelView()
+                .environment(appDelegate.engine)
+        }
+        .defaultSize(width: 420, height: 600)
+        .windowResizability(.contentMinSize)
+
+        Settings {
+            SettingsView()
+                .environment(appDelegate.engine)
+                .environment(appDelegate.hotkey)
+                .environment(appDelegate.permissions)
+                .environment(appDelegate.downloads)
+        }
+    }
+
+    private var menuBarIcon: String {
+        switch appDelegate.engine.lifecycleState {
+        case .loading: return "circle.dashed"
+        case .ready:
+            switch appDelegate.engine.pipelineState {
+            case .listening: return "waveform"
+            case .processing, .speaking: return "bolt.fill"
+            default: return "waveform"
+            }
+        case .error: return "exclamationmark.triangle"
+        }
     }
 }

@@ -29,6 +29,38 @@ struct ToolTraceEvent: Sendable {
     let success: Bool
 }
 
+// Model type (shared by ModelInfo and ModelCatalogEntry)
+enum ModelType: String, Sendable {
+    case llm, tts, stt
+
+    var displayName: String {
+        switch self {
+        case .llm: return "LLM"
+        case .stt: return "Speech-to-Text"
+        case .tts: return "Text-to-Speech"
+        }
+    }
+}
+
+enum ModelSource: Equatable, Sendable {
+    case bundled
+    case remote(URL)
+}
+
+struct ModelCatalogEntry: Identifiable, Equatable, Sendable {
+    let id: String
+    let name: String
+    let sizeBytes: Int64
+    let type: ModelType
+    let description: String
+    let source: ModelSource
+    let localPath: String
+    let archiveDirName: String?
+    let isRecommended: Bool
+
+    var isArchive: Bool { type == .stt || type == .tts }
+}
+
 // Model info (from rcli_list_available_models JSON)
 struct ModelInfo: Identifiable, Sendable {
     let id: String
@@ -36,10 +68,6 @@ struct ModelInfo: Identifiable, Sendable {
     let sizeBytes: Int64
     let type: ModelType
     let isDownloaded: Bool
-
-    enum ModelType: String, Sendable {
-        case llm, tts, stt
-    }
 }
 
 // Action info (from rcli_action_list JSON)

@@ -8,7 +8,7 @@ struct OnboardingView: View {
 
     @State private var currentStep = 0
     @State private var selectedModel: String? = "qwen3-0.6b"
-    @State private var downloadService = ModelDownloadService()
+    @Environment(ModelDownloadService.self) private var downloadService
     @State private var downloadStarted = false
 
     private let steps = ["Welcome", "Models", "Permissions", "Hotkey"]
