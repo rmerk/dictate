@@ -77,7 +77,7 @@ struct PanelView: View {
         HStack {
             Image(systemName: "mic.fill")
                 .font(.caption)
-                .foregroundStyle(.blue)
+                .foregroundColor(.blue)
             Text("\"\(text)\"")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -127,7 +127,7 @@ struct PanelView: View {
                     .font(.title3)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.blue)
+            .foregroundColor(.blue)
 
             Button {
                 sendTextCommand()
@@ -136,7 +136,7 @@ struct PanelView: View {
                     .font(.title3)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(inputText.isEmpty ? .secondary : .blue)
+            .foregroundColor(inputText.isEmpty ? .secondary : .blue)
             .disabled(inputText.isEmpty || isProcessing)
         }
         .padding()
@@ -214,7 +214,7 @@ struct MessageRow: View {
                     .overlay {
                         Text(message.role == .user ? "U" : "R")
                             .font(.caption2)
-                            .foregroundStyle(message.role == .user ? .secondary : .blue)
+                            .foregroundColor(message.role == .user ? .secondary : .blue)
                     }
 
                 VStack(alignment: .leading, spacing: 2) {
