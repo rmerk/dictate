@@ -46,14 +46,21 @@ struct MenuBarView: View {
                     QuickActionCard(
                         icon: "mic.fill",
                         label: "Dictation",
-                        shortcut: "\u{2318}J",
+                        shortcut: HotkeyFormatter.displayString(for: hotkey.hotkeyString),
                         enabled: permissions.microphoneGranted && permissions.accessibilityGranted,
                         action: { hotkey.onHotkeyPressed?() }
                     )
                     QuickActionCard(
+                        icon: "bolt.fill",
+                        label: "Command",
+                        shortcut: HotkeyFormatter.displayString(for: hotkey.commandHotkeyString),
+                        enabled: permissions.microphoneGranted && permissions.accessibilityGranted,
+                        action: { hotkey.onCommandHotkeyPressed?() }
+                    )
+                    QuickActionCard(
                         icon: "text.bubble",
                         label: "Panel",
-                        shortcut: "\u{2318}\u{21E7}J",
+                        shortcut: "",
                         enabled: true,
                         action: { openWindow(id: "panel") }
                     )
@@ -143,9 +150,11 @@ struct QuickActionCard: View {
                     .font(.title2)
                 Text(label)
                     .font(.caption)
-                Text(shortcut)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                if !shortcut.isEmpty {
+                    Text(shortcut)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)

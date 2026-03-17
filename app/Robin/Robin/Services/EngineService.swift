@@ -23,10 +23,14 @@ final class EngineService: EngineProviding {
     var activeModel: String = ""
     var activeTTSModel: String = ""
     var activeSTTModel: String = ""
+    var selectedOfflineSTTModelId: String?
+    var selectedMetalRTSTTModelId: String?
     var activeEngine: String = ""
     var personality: String = "default"
     var enabledActionCount: Int = 0
     var interruptedResponse: String = ""
+    var isApplyingMetalRTSTTSelection = false
+    var metalRTSTTApplyErrorMessage: String?
 
     // — Event Streams —
     let transcriptStream: AsyncStream<TranscriptEvent>
@@ -58,6 +62,8 @@ final class EngineService: EngineProviding {
     let engineQueue = DispatchQueue(label: "ai.rcli.engine")
     let ttsQueue = DispatchQueue(label: "ai.rcli.tts")
     private var audioTimer: Timer?
+    var initializedModelsDir: String?
+    var initializedGPULayers: Int?
 
     init() {
         // Create all streams
@@ -117,6 +123,8 @@ final class EngineService: EngineProviding {
     // MARK: - Lifecycle
 
     func initialize(modelsDir: String, gpuLayers: Int) async throws {
+        initializedModelsDir = modelsDir
+        initializedGPULayers = gpuLayers
         lifecycleState = .loading
         let trampolines = (
             transcript: Self.transcriptTrampoline,
@@ -154,14 +162,21 @@ final class EngineService: EngineProviding {
                 let stt = String(cString: rcli_get_stt_model(h))
                 let engine = String(cString: rcli_get_active_engine(h))
                 let pers = String(cString: rcli_get_personality(h))
+                let actionCount = Int(rcli_num_actions_enabled(h))
+                let persistedOfflineSTTID = ConfigService.shared.read(key: "stt_model")
+                let persistedMetalRTSTTID = ConfigService.shared.read(key: "metalrt_stt")
                 Task { @MainActor in
-                    self.handle = sh.raw
-                    self.isReady = true
-                    self.activeModel = model
-                    self.activeTTSModel = tts
-                    self.activeSTTModel = stt
-                    self.activeEngine = engine
-                    self.personality = pers
+                    self.applyInitializedRuntimeState(
+                        handle: sh.raw,
+                        model: model,
+                        tts: tts,
+                        runtimeSTTName: stt,
+                        persistedOfflineSTTID: persistedOfflineSTTID,
+                        persistedMetalRTSTTID: persistedMetalRTSTTID,
+                        engine: engine,
+                        personality: pers,
+                        enabledActionCount: actionCount
+                    )
                 }
                 cont.resume()
             }
@@ -171,6 +186,8 @@ final class EngineService: EngineProviding {
     }
 
     func initializeSTTOnly(modelsDir: String, gpuLayers: Int) async throws {
+        initializedModelsDir = modelsDir
+        initializedGPULayers = gpuLayers
         lifecycleState = .loading
         let trampolines = (
             transcript: Self.transcriptTrampoline,
@@ -201,6 +218,8 @@ final class EngineService: EngineProviding {
                 Task { @MainActor in
                     self.handle = sh.raw
                     self.isReady = true
+                    self.selectedOfflineSTTModelId = ConfigService.shared.read(key: "stt_model")
+                    self.selectedMetalRTSTTModelId = ConfigService.shared.read(key: "metalrt_stt")
                 }
                 cont.resume()
             }
@@ -212,12 +231,6 @@ final class EngineService: EngineProviding {
         audioTimer?.invalidate()
         audioTimer = nil
 
-        // Finish all continuations so stream consumer tasks exit their for-await loops
-        transcriptContinuation.finish()
-        stateContinuation.finish()
-        toolTraceContinuation.finish()
-        responseContinuation.finish()
-
         guard let h = handle else { return }
         let sh = SendableHandle(raw: h)
 
@@ -227,14 +240,55 @@ final class EngineService: EngineProviding {
             rcli_deregister_all_callbacks(sh.raw)
         }
 
-        handle = nil
-        isReady = false
-        lifecycleState = .loading
+        clearRuntimeStateForRestart()
 
         // Destroy asynchronously — may take time to drain in-flight operations
         engineQueue.async {
             rcli_destroy(sh.raw)
         }
+    }
+
+    private func applyInitializedRuntimeState(
+        handle: RCLIHandle,
+        model: String,
+        tts: String,
+        runtimeSTTName stt: String,
+        persistedOfflineSTTID: String?,
+        persistedMetalRTSTTID: String?,
+        engine: String,
+        personality: String,
+        enabledActionCount: Int
+    ) {
+        self.handle = handle
+        isReady = true
+        activeModel = model
+        activeTTSModel = tts
+        activeSTTModel = stt
+        selectedOfflineSTTModelId = ModelSelectionResolver.selectedSTTModelID(
+            runtimeSTTName: stt,
+            persistedOfflineSTTID: persistedOfflineSTTID
+        )
+        selectedMetalRTSTTModelId = ModelSelectionResolver.selectedMetalRTSTTModelID(
+            runtimeSTTName: stt,
+            persistedMetalRTSTTID: persistedMetalRTSTTID
+        )
+        activeEngine = engine
+        self.personality = personality
+        self.enabledActionCount = enabledActionCount
+        isApplyingMetalRTSTTSelection = false
+        metalRTSTTApplyErrorMessage = nil
+    }
+
+    private func clearRuntimeStateForRestart() {
+        handle = nil
+        isReady = false
+        lifecycleState = .loading
+        activeModel = ""
+        activeTTSModel = ""
+        activeSTTModel = ""
+        activeEngine = ""
+        isSpeaking = false
+        audioLevel = 0
     }
 
     // MARK: - Audio Metering

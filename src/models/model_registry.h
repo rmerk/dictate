@@ -316,7 +316,7 @@ inline std::vector<MetalRTComponentModel> metalrt_component_models() {
             "Whisper Small (MLX 4-bit)",
             "stt",
             "runanywhere/whisper_small_4bit",
-            "",
+            "whisper-small-mlx-4bit",
             "whisper-small-mlx-4bit",
             375,
             "Good balance of speed and accuracy (~5% WER)",
@@ -328,7 +328,7 @@ inline std::vector<MetalRTComponentModel> metalrt_component_models() {
             "Whisper Medium (MLX 4-bit)",
             "stt",
             "runanywhere/whisper_medium_4bit",
-            "",
+            "whisper-medium-mlx-4bit",
             "whisper-medium-mlx-4bit",
             980,
             "Best accuracy, slower (~3% WER)",
@@ -348,6 +348,12 @@ inline std::vector<MetalRTComponentModel> metalrt_component_models() {
             true,
         },
     };
+}
+
+inline std::string metalrt_component_remote_path(const MetalRTComponentModel& model,
+                                                 const std::string& filename) {
+    if (model.hf_subdir.empty()) return filename;
+    return model.hf_subdir + "/" + filename;
 }
 
 

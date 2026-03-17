@@ -9,6 +9,26 @@ private struct ModelInfoJSON: Codable {
     let is_downloaded: Bool
 }
 
+enum ModelSelectionResolver {
+    static func selectedSTTModelID(runtimeSTTName: String, persistedOfflineSTTID: String?) -> String? {
+        if let persistedOfflineSTTID, !persistedOfflineSTTID.isEmpty {
+            return persistedOfflineSTTID
+        }
+
+        return ModelCatalog.models(ofType: .stt).first { $0.name == runtimeSTTName }?.id
+    }
+
+    static func selectedMetalRTSTTModelID(runtimeSTTName: String, persistedMetalRTSTTID: String?) -> String? {
+        if let persistedMetalRTSTTID,
+           !persistedMetalRTSTTID.isEmpty,
+           MetalRTSTTCatalog.entry(id: persistedMetalRTSTTID) != nil {
+            return persistedMetalRTSTTID
+        }
+
+        return MetalRTSTTCatalog.entry(runtimeName: runtimeSTTName)?.id
+    }
+}
+
 extension EngineService {
     var activeModelId: String? {
         ModelCatalog.all.first { $0.name == activeModel }?.id
@@ -20,6 +40,30 @@ extension EngineService {
 
     var activeTTSModelId: String? {
         ModelCatalog.all.first { $0.name == activeTTSModel }?.id
+    }
+
+    var activeRuntimeSTTName: String {
+        activeSTTModel
+    }
+
+    var activeMetalRTSTTModelId: String? {
+        MetalRTSTTCatalog.entry(runtimeName: activeSTTModel)?.id
+    }
+
+    var persistedOfflineSTTModelId: String? {
+        let modelID = ConfigService.shared.read(key: "stt_model")
+        guard let modelID, !modelID.isEmpty else { return nil }
+        return modelID
+    }
+
+    var persistedMetalRTSTTModelId: String? {
+        let modelID = ConfigService.shared.read(key: "metalrt_stt")
+        guard let modelID, !modelID.isEmpty else { return nil }
+        return modelID
+    }
+
+    var isUsingMetalRT: Bool {
+        activeEngine.caseInsensitiveCompare("metalrt") == .orderedSame
     }
 
     func switchModel(_ id: String) async throws {
@@ -46,7 +90,7 @@ extension EngineService {
             throw RCLIError.modelNotFound(id)
         }
         try ConfigService.shared.write(key: "stt_model", value: id)
-        activeSTTModel = entry.name
+        selectedOfflineSTTModelId = entry.id
     }
 
     func switchTTSModel(_ id: String) throws {
@@ -55,6 +99,43 @@ extension EngineService {
         }
         try ConfigService.shared.write(key: "tts_model", value: id)
         activeTTSModel = entry.name
+    }
+
+    func switchMetalRTSTTModel(_ id: String) async throws {
+        guard let entry = MetalRTSTTCatalog.entry(id: id) else {
+            throw RCLIError.modelNotFound(id)
+        }
+        guard isUsingMetalRT else {
+            throw RCLIError.commandFailed("MetalRT STT is only available when the MetalRT engine is active.")
+        }
+
+        try ensureMetalRTSTTCanRestart()
+
+        if activeMetalRTSTTModelId == entry.id && metalRTSTTApplyErrorMessage == nil {
+            selectedMetalRTSTTModelId = entry.id
+            return
+        }
+
+        guard let modelsDir = initializedModelsDir,
+              let gpuLayers = initializedGPULayers else {
+            throw RCLIError.engineNotReady
+        }
+        guard MetalRTSTTCatalog.isInstalled(entry, modelsDir: modelsDir) else {
+            throw RCLIError.commandFailed("Download \(entry.name) before applying it.")
+        }
+
+        metalRTSTTApplyErrorMessage = nil
+        isApplyingMetalRTSTTSelection = true
+        selectedMetalRTSTTModelId = entry.id
+        try ConfigService.shared.write(key: "metalrt_stt", value: entry.id)
+
+        do {
+            try await restartEngineForConfigurationChange(modelsDir: modelsDir, gpuLayers: gpuLayers)
+        } catch {
+            isApplyingMetalRTSTTSelection = false
+            metalRTSTTApplyErrorMessage = error.localizedDescription
+            throw error
+        }
     }
 
     func listAvailableModels() async throws -> [ModelInfo] {
@@ -125,6 +206,31 @@ extension EngineService {
                 rcli_get_context_info(sh.raw, &tokens, &ctx)
                 cont.resume(returning: (Int(tokens), Int(ctx)))
             }
+        }
+    }
+
+    private func ensureMetalRTSTTCanRestart() throws {
+        if isApplyingMetalRTSTTSelection {
+            throw RCLIError.commandFailed("Robin is already applying a MetalRT STT model.")
+        }
+
+        switch pipelineState {
+        case .idle, .interrupted:
+            return
+        case .listening, .processing, .speaking:
+            throw RCLIError.commandFailed(
+                "Wait for dictation or playback to finish before switching the MetalRT STT model."
+            )
+        }
+    }
+
+    private func restartEngineForConfigurationChange(modelsDir: String, gpuLayers: Int) async throws {
+        shutdown()
+        do {
+            try await initialize(modelsDir: modelsDir, gpuLayers: gpuLayers)
+        } catch {
+            lifecycleState = .error(error.localizedDescription)
+            throw error
         }
     }
 }

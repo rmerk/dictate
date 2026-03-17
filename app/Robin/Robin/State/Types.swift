@@ -61,6 +61,50 @@ struct ModelCatalogEntry: Identifiable, Equatable, Sendable {
     var isArchive: Bool { type == .stt || type == .tts }
 }
 
+struct MetalRTModelFile: Equatable, Sendable {
+    let relativePath: String
+    let url: URL
+}
+
+struct MetalRTSTTEntry: Identifiable, Equatable, Sendable {
+    let id: String
+    let name: String
+    let sizeBytes: Int64
+    let description: String
+    let hfRepo: String
+    let hfSubdirectory: String?
+    let localDirectory: String
+    let isDefault: Bool
+
+    var files: [MetalRTModelFile] {
+        Self.requiredFiles.map(makeRemoteFile)
+    }
+
+    private func makeRemoteFile(relativePath: String) -> MetalRTModelFile {
+        let remotePath: String
+        if let hfSubdirectory, !hfSubdirectory.isEmpty {
+            remotePath = "\(hfSubdirectory)/\(relativePath)"
+        } else {
+            remotePath = relativePath
+        }
+
+        return MetalRTModelFile(
+            relativePath: relativePath,
+            url: Self.resolveHuggingFaceURL(repo: hfRepo, remotePath: remotePath)
+        )
+    }
+
+    private static func resolveHuggingFaceURL(repo: String, remotePath: String) -> URL {
+        URL(string: "https://huggingface.co/\(repo)/resolve/main/\(remotePath)")!
+    }
+
+    private static let requiredFiles = [
+        "config.json",
+        "model.safetensors",
+        "tokenizer.json",
+    ]
+}
+
 // Model info (from rcli_list_available_models JSON)
 struct ModelInfo: Identifiable, Sendable {
     let id: String
@@ -83,6 +127,39 @@ struct ActionInfo: Identifiable, Sendable {
 enum Permission: String, Sendable {
     case microphone
     case accessibility
+}
+
+// Hotkey routing mode
+enum HotkeyRoutingMode: String, Sendable {
+    case auto    // heuristic decides dictate vs command
+    case manual  // two explicit hotkeys
+}
+
+// Result of the auto-router
+enum HotkeyMode: Sendable {
+    case dictate
+    case command
+}
+
+/// Lightweight heuristic router — runs in ~0 ms, no LLM involved.
+/// Returns .command if the transcript starts with a known action verb
+/// and at least one action is enabled; otherwise .dictate.
+enum HotkeyRouter {
+    private static let commandVerbs: Set<String> = [
+        "open", "close", "create", "send", "search", "find",
+        "play", "pause", "stop", "set", "show", "hide",
+        "type", "click", "move", "copy", "summarize", "translate",
+        "what", "who", "when", "where", "why", "how",
+        "turn", "enable", "disable", "launch", "quit", "switch",
+        "increase", "decrease", "mute", "unmute", "take", "make",
+        "add", "delete", "remove", "schedule", "remind", "check"
+    ]
+
+    static func route(_ text: String, enabledActionCount: Int) -> HotkeyMode {
+        guard enabledActionCount > 0, !text.isEmpty else { return .dictate }
+        let firstWord = text.lowercased().split(separator: " ", maxSplits: 1).first.map(String.init) ?? ""
+        return commandVerbs.contains(firstWord) ? .command : .dictate
+    }
 }
 
 // Errors

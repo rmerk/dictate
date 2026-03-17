@@ -3,6 +3,9 @@ import SwiftUI
 struct HotkeysSettingsView: View {
     @Environment(HotkeyService.self) private var hotkey
     @Environment(\.hotkeySetup) private var hotkeySetup
+    @AppStorage("hotkeyRoutingMode") private var routingModeRaw = "auto"
+
+    private var isAutoRouting: Bool { routingModeRaw == "auto" }
 
     var body: some View {
         Form {
@@ -10,11 +13,38 @@ struct HotkeysSettingsView: View {
                 HStack {
                     Text("Dictation hotkey")
                     Spacer()
-                    HotkeyRecorder()
+                    HotkeyRecorder(target: .dictation)
                 }
                 Text("Click the shortcut to change it. At least one modifier (⌘, ⌥, ⌃, ⇧) is required.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Command") {
+                HStack {
+                    Text("Command hotkey")
+                    Spacer()
+                    HotkeyRecorder(target: .command)
+                }
+                Text("Always routes to the LLM and actions — bypasses auto-detect.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Routing") {
+                Toggle("Auto-detect mode", isOn: Binding(
+                    get: { isAutoRouting },
+                    set: { routingModeRaw = $0 ? "auto" : "manual" }
+                ))
+                if isAutoRouting {
+                    Text("One hotkey does both: command verbs (\"open Safari\", \"create a note\") run LLM + actions; everything else is pasted as dictation.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Dictation hotkey always pastes. Command hotkey always runs LLM + actions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Status") {

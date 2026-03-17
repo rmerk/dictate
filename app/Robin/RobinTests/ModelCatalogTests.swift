@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Robin
 
@@ -61,5 +62,133 @@ struct ModelCatalogTests {
     @Test func activeModelIdNilForUnknown() {
         let match = ModelCatalog.all.first { $0.name == "Unknown Model XYZ" }
         #expect(match == nil)
+    }
+
+    @Test func sttSelectionPrefersPersistedOfflineSelection() {
+        let selectionID = ModelSelectionResolver.selectedSTTModelID(
+            runtimeSTTName: "Whisper Tiny (MLX 4-bit)",
+            persistedOfflineSTTID: "parakeet-tdt"
+        )
+
+        #expect(selectionID == "parakeet-tdt")
+    }
+
+    @Test func sttSelectionFallsBackToRuntimeNameWhenPersistedSelectionMissing() {
+        let selectionID = ModelSelectionResolver.selectedSTTModelID(
+            runtimeSTTName: "Whisper base.en",
+            persistedOfflineSTTID: nil
+        )
+
+        #expect(selectionID == "whisper-base")
+    }
+
+    @Test func metalRTSTTCatalogHasExpectedEntries() {
+        let ids = MetalRTSTTCatalog.all.map(\.id)
+        let localDirectories = MetalRTSTTCatalog.all.map(\.localDirectory)
+
+        #expect(MetalRTSTTCatalog.all.count == 3)
+        #expect(ids == [
+            "metalrt-whisper-tiny",
+            "metalrt-whisper-small",
+            "metalrt-whisper-medium",
+        ])
+        #expect(Set(localDirectories).count == localDirectories.count)
+    }
+
+    @Test func metalRTSTTSelectionPrefersPersistedSelection() {
+        let selectionID = ModelSelectionResolver.selectedMetalRTSTTModelID(
+            runtimeSTTName: "Whisper Tiny (MLX 4-bit)",
+            persistedMetalRTSTTID: "metalrt-whisper-medium"
+        )
+
+        #expect(selectionID == "metalrt-whisper-medium")
+    }
+
+    @Test func metalRTSTTSelectionFallsBackToRuntimeNameWhenPersistedSelectionMissing() {
+        let selectionID = ModelSelectionResolver.selectedMetalRTSTTModelID(
+            runtimeSTTName: "Whisper Small (MLX 4-bit)",
+            persistedMetalRTSTTID: nil
+        )
+
+        #expect(selectionID == "metalrt-whisper-small")
+    }
+
+    @Test func metalRTSTTInstallRequiresConfigModelAndTokenizerFiles() throws {
+        let entry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-small"))
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let installDirectory = root
+            .appendingPathComponent("metalrt", isDirectory: true)
+            .appendingPathComponent(entry.localDirectory, isDirectory: true)
+
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(
+            at: installDirectory,
+            withIntermediateDirectories: true
+        )
+        for relativePath in ["config.json", "model.safetensors", "tokenizer.json"] {
+            let fileURL = installDirectory.appendingPathComponent(relativePath)
+            try Data(relativePath.utf8).write(to: fileURL)
+        }
+
+        #expect(MetalRTSTTCatalog.isInstalled(entry, modelsDir: root.path))
+
+        try FileManager.default.removeItem(
+            at: installDirectory.appendingPathComponent("tokenizer.json")
+        )
+
+        #expect(!MetalRTSTTCatalog.isInstalled(entry, modelsDir: root.path))
+    }
+
+    @Test func metalRTWhisperTinyResolvesRootLevelFiles() throws {
+        let entry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-tiny"))
+        assertResolvedFileURLs(
+            for: entry,
+            expectedPaths: [
+                "config.json",
+                "model.safetensors",
+                "tokenizer.json",
+            ]
+        )
+    }
+
+    @Test func metalRTWhisperSmallResolvesFilesFromRepoSubdirectory() throws {
+        let entry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-small"))
+        assertResolvedFileURLs(
+            for: entry,
+            expectedPaths: [
+                "whisper-small-mlx-4bit/config.json",
+                "whisper-small-mlx-4bit/model.safetensors",
+                "whisper-small-mlx-4bit/tokenizer.json",
+            ]
+        )
+    }
+
+    @Test func metalRTWhisperMediumResolvesFilesFromRepoSubdirectory() throws {
+        let entry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-medium"))
+        assertResolvedFileURLs(
+            for: entry,
+            expectedPaths: [
+                "whisper-medium-mlx-4bit/config.json",
+                "whisper-medium-mlx-4bit/model.safetensors",
+                "whisper-medium-mlx-4bit/tokenizer.json",
+            ]
+        )
+    }
+
+    private func assertResolvedFileURLs(for entry: MetalRTSTTEntry, expectedPaths: [String]) {
+        let actualPaths = entry.files.map { remotePath(in: $0.url) }
+        #expect(actualPaths == expectedPaths)
+    }
+
+    private func remotePath(in url: URL) -> String {
+        let marker = "/resolve/main/"
+        let absoluteString = url.absoluteString
+        guard let range = absoluteString.range(of: marker) else {
+            Issue.record("Unexpected MetalRT file URL: \(absoluteString)")
+            return absoluteString
+        }
+        return String(absoluteString[range.upperBound...])
     }
 }

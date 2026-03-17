@@ -15,11 +15,13 @@ final class ModelDownloadService: NSObject {
         var fraction: Double { totalBytes > 0 ? Double(bytesWritten) / Double(totalBytes) : 0 }
         var failed: Bool = false
         var errorMessage: String?
+        var detailText: String?
     }
 
     private var session: URLSession!
     private var continuations: [String: CheckedContinuation<Void, Error>] = [:]
     private var destinationFilenames: [String: String] = [:]
+    private var metalRTDownloadTasks: [String: Task<Void, Error>] = [:]
     private let modelsDir: String
 
     init(modelsDir: String = NSString(string: "~/Library/RCLI/models").expandingTildeInPath) {
@@ -49,11 +51,45 @@ final class ModelDownloadService: NSObject {
     func cancelDownload(modelId: String) {
         activeDownloads.removeValue(forKey: modelId)
         destinationFilenames.removeValue(forKey: modelId)
+        metalRTDownloadTasks.removeValue(forKey: modelId)?.cancel()
         session.getAllTasks { tasks in
             tasks.first { $0.taskDescription == modelId }?.cancel()
         }
         // Do NOT resume continuation here — let didCompleteWithError handle it
         // with NSURLErrorCancelled. This prevents double-resume crashes.
+    }
+
+    func downloadMetalRTSTT(_ entry: MetalRTSTTEntry) async throws {
+        metalRTDownloadTasks[entry.id]?.cancel()
+        let installDirectory = MetalRTSTTCatalog.installDirectory(for: entry, modelsDir: modelsDir)
+
+        let task = Task { @MainActor [modelsDir] in
+            try await self.downloadMetalRTSTTFiles(entry, modelsDir: modelsDir)
+        }
+        metalRTDownloadTasks[entry.id] = task
+        defer { metalRTDownloadTasks.removeValue(forKey: entry.id) }
+
+        do {
+            try await task.value
+            completedDownloads.insert(entry.id)
+        } catch is CancellationError {
+            activeDownloads.removeValue(forKey: entry.id)
+            try? FileManager.default.removeItem(atPath: installDirectory)
+            throw CancellationError()
+        } catch {
+            activeDownloads[entry.id] = DownloadProgress(
+                modelId: entry.id,
+                modelName: entry.name,
+                bytesWritten: 0,
+                totalBytes: Int64(entry.files.count),
+                failed: true,
+                errorMessage: error.localizedDescription,
+                detailText: "Download failed"
+            )
+            try? FileManager.default.removeItem(atPath: installDirectory)
+            throw error
+        }
+        activeDownloads.removeValue(forKey: entry.id)
     }
 
     func extractArchive(archivePath: String, to directory: String,
@@ -114,6 +150,48 @@ final class ModelDownloadService: NSObject {
     }
 
     var hasActiveDownloads: Bool { !activeDownloads.isEmpty }
+
+    private func downloadMetalRTSTTFiles(_ entry: MetalRTSTTEntry, modelsDir: String) async throws {
+        let installDirectory = MetalRTSTTCatalog.installDirectory(for: entry, modelsDir: modelsDir)
+        try FileManager.default.createDirectory(atPath: installDirectory, withIntermediateDirectories: true)
+
+        for (index, file) in entry.files.enumerated() {
+            try Task.checkCancellation()
+
+            activeDownloads[entry.id] = DownloadProgress(
+                modelId: entry.id,
+                modelName: entry.name,
+                bytesWritten: Int64(index),
+                totalBytes: Int64(entry.files.count),
+                detailText: "File \(index + 1) of \(entry.files.count): \(file.relativePath)"
+            )
+
+            let (temporaryURL, response) = try await URLSession.shared.download(from: file.url)
+            try Task.checkCancellation()
+            try validateDownloadResponse(response, for: file)
+            try moveDownloadedFile(
+                from: temporaryURL,
+                to: URL(fileURLWithPath: installDirectory).appendingPathComponent(file.relativePath)
+            )
+        }
+    }
+
+    private func validateDownloadResponse(_ response: URLResponse, for file: MetalRTModelFile) throws {
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode) else {
+            throw RCLIError.commandFailed("Download failed for \(file.relativePath)")
+        }
+    }
+
+    private func moveDownloadedFile(from sourceURL: URL, to destinationURL: URL) throws {
+        let fileManager = FileManager.default
+        let parentDirectory = destinationURL.deletingLastPathComponent()
+        try fileManager.createDirectory(at: parentDirectory, withIntermediateDirectories: true)
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+        try fileManager.moveItem(at: sourceURL, to: destinationURL)
+    }
 }
 
 extension ModelDownloadService: URLSessionDownloadDelegate {

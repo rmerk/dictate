@@ -14,7 +14,7 @@ final class OverlayService {
     }
 
     func show(state: OverlayState, caretX: Double? = nil, caretY: Double? = nil) {
-        let stateInt: Int32 = (state == .recording) ? RCLI_OVERLAY_RECORDING : RCLI_OVERLAY_TRANSCRIBING
+        let stateInt = overlayStateInt(state)
         if let x = caretX, let y = caretY {
             rcli_overlay_show(stateInt, x, y, 1)
         } else {
@@ -23,8 +23,17 @@ final class OverlayService {
     }
 
     func setState(_ state: OverlayState) {
-        let stateInt: Int32 = (state == .recording) ? RCLI_OVERLAY_RECORDING : RCLI_OVERLAY_TRANSCRIBING
-        rcli_overlay_set_state(stateInt)
+        rcli_overlay_set_state(overlayStateInt(state))
+    }
+
+    private func overlayStateInt(_ state: OverlayState) -> Int32 {
+        switch state {
+        case .recording:   return RCLI_OVERLAY_RECORDING
+        case .transcribing: return RCLI_OVERLAY_TRANSCRIBING
+        // Command mode reuses TRANSCRIBING state visually; the C overlay doesn't
+        // have a dedicated command state, so we fall back to transcribing.
+        case .commanding:  return RCLI_OVERLAY_TRANSCRIBING
+        }
     }
 
     func dismiss() {
@@ -39,5 +48,6 @@ final class OverlayService {
     enum OverlayState {
         case recording
         case transcribing
+        case commanding  // command mode recording — visually distinct from dictation
     }
 }

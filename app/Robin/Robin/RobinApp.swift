@@ -53,27 +53,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     func setupHotkey() {
-        hotkey.onHotkeyPressed = { [engine, hotkey, overlay] in
+        // MARK: Dictation hotkey — capture → STT → route (auto) or paste (manual)
+        hotkey.onHotkeyPressed = { [engine, hotkey, overlay, conversation] in
             Task { @MainActor in
                 if hotkey.isRecording {
+                    // Stop dictation recording
                     hotkey.setRecording(false)
                     overlay.setState(.transcribing)
 
                     do {
                         let text = try await engine.stopAndTranscribe()
-                        if !text.isEmpty {
+                        guard !text.isEmpty else {
+                            overlay.dismiss()
+                            return
+                        }
+
+                        // Read live value at fire time — @AppStorage key matches HotkeysSettingsView
+                        let routingMode = HotkeyRoutingMode(
+                            rawValue: UserDefaults.standard.string(forKey: "hotkeyRoutingMode") ?? "auto"
+                        ) ?? .auto
+
+                        if routingMode == .auto {
+                            let mode = HotkeyRouter.route(text, enabledActionCount: engine.enabledActionCount)
+                            if mode == .command {
+                                await Self.runCommand(text, engine: engine, conversation: conversation, overlay: overlay)
+                            } else {
+                                rcli_paste_text(text)
+                                overlay.dismiss()
+                            }
+                        } else {
+                            // Manual mode: dictation hotkey always pastes
                             rcli_paste_text(text)
+                            overlay.dismiss()
                         }
                     } catch {
-                        // Transcription failed — just dismiss
+                        overlay.dismiss()
                     }
-                    overlay.dismiss()
                 } else {
+                    // Ignore if command recording is already in progress
+                    guard !hotkey.isCapturing else { return }
+
                     var caretX: Double = 0
                     var caretY: Double = 0
-                    let hasCaret = rcli_get_caret_position(&caretX, &caretY)
+                    let caretFound = rcli_get_caret_position(&caretX, &caretY) == 0
 
-                    if hasCaret == 0 {
+                    if caretFound {
                         overlay.show(state: .recording, caretX: caretX, caretY: caretY)
                     } else {
                         overlay.show(state: .recording)
@@ -84,7 +108,66 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+
+        // MARK: Command hotkey — capture → STT → always run LLM + actions
+        hotkey.onCommandHotkeyPressed = { [engine, hotkey, overlay, conversation] in
+            Task { @MainActor in
+                if hotkey.isCommandRecording {
+                    // Stop command recording
+                    hotkey.setCommandRecording(false)
+                    overlay.setState(.transcribing)
+
+                    do {
+                        let text = try await engine.stopAndTranscribe()
+                        guard !text.isEmpty else {
+                            overlay.dismiss()
+                            return
+                        }
+                        await Self.runCommand(text, engine: engine, conversation: conversation, overlay: overlay)
+                    } catch {
+                        overlay.dismiss()
+                    }
+                } else {
+                    // Ignore if dictation recording is already in progress
+                    guard !hotkey.isCapturing else { return }
+
+                    var caretX: Double = 0
+                    var caretY: Double = 0
+                    let caretFound = rcli_get_caret_position(&caretX, &caretY) == 0
+
+                    if caretFound {
+                        overlay.show(state: .commanding, caretX: caretX, caretY: caretY)
+                    } else {
+                        overlay.show(state: .commanding)
+                    }
+
+                    engine.startCapture()
+                    hotkey.setCommandRecording(true)
+                }
+            }
+        }
+
         _ = hotkey.start()
+    }
+
+    /// Shared helper: transcribed text → processCommand → TTS + conversation store.
+    @MainActor
+    private static func runCommand(
+        _ text: String,
+        engine: EngineService,
+        conversation: ConversationStore,
+        overlay: OverlayService
+    ) async {
+        conversation.addUserMessage(text, method: .voice)
+        let start = Date()
+        do {
+            let response = try await engine.processAndSpeak(text)
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            conversation.addAssistantMessage(response, responseTimeMs: ms)
+        } catch {
+            conversation.addAssistantMessage("Error: \(error.localizedDescription)")
+        }
+        overlay.dismiss()
     }
 }
 

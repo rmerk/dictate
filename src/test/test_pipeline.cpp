@@ -725,6 +725,39 @@ static void test_metalrt_loader() {
         TEST_INFO("WARNING: TTS symbols missing — Kokoro will fall back to sherpa-onnx (CPU)");
 }
 
+static void test_metalrt_component_manifest() {
+    TEST_SECTION("MetalRT Component Manifest");
+
+    auto comps = rcli::metalrt_component_models();
+    const rcli::MetalRTComponentModel* tiny = nullptr;
+    const rcli::MetalRTComponentModel* small = nullptr;
+    const rcli::MetalRTComponentModel* medium = nullptr;
+
+    for (const auto& component : comps) {
+        if (component.id == "metalrt-whisper-tiny") tiny = &component;
+        if (component.id == "metalrt-whisper-small") small = &component;
+        if (component.id == "metalrt-whisper-medium") medium = &component;
+    }
+
+    TEST("Whisper Tiny registry entry exists", tiny != nullptr);
+    TEST("Whisper Small registry entry exists", small != nullptr);
+    TEST("Whisper Medium registry entry exists", medium != nullptr);
+
+    if (!tiny || !small || !medium) return;
+
+    TEST("Whisper Tiny keeps root-level config path",
+         rcli::metalrt_component_remote_path(*tiny, "config.json") == "config.json");
+    TEST("Whisper Small resolves config from repo subdirectory",
+         rcli::metalrt_component_remote_path(*small, "config.json") ==
+             "whisper-small-mlx-4bit/config.json");
+    TEST("Whisper Small resolves tokenizer from repo subdirectory",
+         rcli::metalrt_component_remote_path(*small, "tokenizer.json") ==
+             "whisper-small-mlx-4bit/tokenizer.json");
+    TEST("Whisper Medium resolves model from repo subdirectory",
+         rcli::metalrt_component_remote_path(*medium, "model.safetensors") ==
+             "whisper-medium-mlx-4bit/model.safetensors");
+}
+
 static void test_metalrt_llm(const std::string& models_dir) {
     TEST_SECTION("MetalRT LLM — GPU Inference Verification");
 
@@ -2355,6 +2388,7 @@ int main(int argc, char** argv) {
     if (filter == "--gpu-diag") {
         test_gpu_diagnostic();
         test_metalrt_loader();
+        test_metalrt_component_manifest();
         test_metalrt_llm(models_dir);
         test_metalrt_stt(models_dir);
         test_metalrt_tts(models_dir);
@@ -2365,6 +2399,7 @@ int main(int argc, char** argv) {
     // --- MetalRT only ---
     if (filter == "--metalrt-only") {
         test_metalrt_loader();
+        test_metalrt_component_manifest();
         test_metalrt_llm(models_dir);
         test_metalrt_stt(models_dir);
         test_metalrt_tts(models_dir);

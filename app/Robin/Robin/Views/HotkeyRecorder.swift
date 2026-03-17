@@ -56,19 +56,29 @@ enum HotkeyFormatter {
 
 // MARK: - Reusable recorder view
 
+enum HotkeyRecorderTarget {
+    case dictation
+    case command
+}
+
 struct HotkeyRecorder: View {
     @Environment(HotkeyService.self) private var hotkey
+    var target: HotkeyRecorderTarget = .dictation
     var font: Font = .system(.body, design: .monospaced)
     var padding: CGFloat = 12
 
     @State private var isCapturing = false
     @State private var monitor: Any?
 
+    private var currentHotkeyString: String {
+        target == .dictation ? hotkey.hotkeyString : hotkey.commandHotkeyString
+    }
+
     var body: some View {
         Button {
             startCapture()
         } label: {
-            Text(isCapturing ? "Press a shortcut…" : HotkeyFormatter.displayString(for: hotkey.hotkeyString))
+            Text(isCapturing ? "Press a shortcut…" : HotkeyFormatter.displayString(for: currentHotkeyString))
                 .font(font)
                 .padding(.horizontal, padding)
                 .padding(.vertical, padding * 0.5)
@@ -96,7 +106,10 @@ struct HotkeyRecorder: View {
                 }
 
                 if let hotkeyStr = HotkeyFormatter.buildHotkeyString(keyCode: event.keyCode, modifiers: modifiers) {
-                    _ = hotkey.restart(with: hotkeyStr)
+                    switch target {
+                    case .dictation: _ = hotkey.restart(with: hotkeyStr)
+                    case .command:   _ = hotkey.restartCommandHotkey(with: hotkeyStr)
+                    }
                 }
                 stopCapture()
                 return nil
