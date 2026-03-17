@@ -66,3 +66,9 @@ benchmark_docs/
 # CMake FetchContent
 _deps/
 EXTERNAL/
+
+# Superpowers brainstorm artifacts
+.superpowers/
+
+# Profiling data
+*.profraw
