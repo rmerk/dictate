@@ -74,6 +74,7 @@ cp "$ROOT_DIR/src/api/rcli_api.h" "$HEADERS_DIR/"
 cp "$ROOT_DIR/src/bridge/rcli_overlay_bridge.h" "$HEADERS_DIR/"
 cp "$ROOT_DIR/src/bridge/rcli_paste_bridge.h" "$HEADERS_DIR/"
 cp "$ROOT_DIR/src/bridge/rcli_caret_bridge.h" "$HEADERS_DIR/"
+cp "$ROOT_DIR/src/bridge/rcli_hotkey_bridge.h" "$HEADERS_DIR/"
 
 # Create module.modulemap for Swift import
 cat > "$HEADERS_DIR/module.modulemap" <<'MODULEMAP'
@@ -82,6 +83,7 @@ module CRCLIEngine {
     header "rcli_overlay_bridge.h"
     header "rcli_paste_bridge.h"
     header "rcli_caret_bridge.h"
+    header "rcli_hotkey_bridge.h"
     export *
 }
 MODULEMAP

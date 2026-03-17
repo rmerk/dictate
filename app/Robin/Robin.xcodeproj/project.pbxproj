@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		CA8B268A2F694EC200A82B5A /* RCLIEngine.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CA8B26892F694EC200A82B5A /* RCLIEngine.xcframework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		CA8B266D2F694EC200A82B5A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -22,10 +26,6 @@
 			remoteInfo = Robin;
 		};
 /* End PBXContainerItemProxy section */
-
-/* Begin PBXBuildFile section */
-		CA8B268A2F694EC200A82B5A /* RCLIEngine.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CA8B26892F694EC200A82B5A /* RCLIEngine.xcframework */; };
-/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		CA8B265F2F694EC200A82B5A /* Robin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Robin.app; sourceTree = BUILT_PRODUCTS_DIR; };

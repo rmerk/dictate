@@ -146,6 +146,7 @@ add_library(rcli STATIC
     src/bridge/rcli_overlay_bridge.mm
     src/bridge/rcli_paste_bridge.mm
     src/bridge/rcli_caret_bridge.mm
+    src/bridge/rcli_hotkey_bridge.mm
 )
 
 set_source_files_properties(src/audio/mic_permission.mm
@@ -163,6 +164,7 @@ set_source_files_properties(src/dictate/daemon.mm
 set_source_files_properties(src/bridge/rcli_overlay_bridge.mm PROPERTIES LANGUAGE CXX)
 set_source_files_properties(src/bridge/rcli_paste_bridge.mm PROPERTIES LANGUAGE CXX)
 set_source_files_properties(src/bridge/rcli_caret_bridge.mm PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/bridge/rcli_hotkey_bridge.mm PROPERTIES LANGUAGE CXX)
 
 target_include_directories(rcli PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
