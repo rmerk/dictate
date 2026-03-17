@@ -18,36 +18,36 @@
 			remoteGlobalIDString = CA8B265E2F694EC200A82B5A;
 			remoteInfo = Robin;
 		};
-		CA8B26772F694EC200A82B5A /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = CA8B26572F694EC200A82B5A /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = CA8B265E2F694EC200A82B5A;
-			remoteInfo = Robin;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		CA8B265F2F694EC200A82B5A /* Robin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Robin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CA8B266C2F694EC200A82B5A /* RobinTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RobinTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		CA8B26762F694EC200A82B5A /* RobinUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RobinUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CA8B26892F694EC200A82B5A /* RCLIEngine.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = RCLIEngine.xcframework; path = ../RCLIEngine.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		CA8B26902F694EC200A82B5A /* Exceptions for "Robin" folder in "Robin" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = CA8B265E2F694EC200A82B5A /* Robin */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		CA8B26612F694EC200A82B5A /* Robin */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CA8B26902F694EC200A82B5A /* Exceptions for "Robin" folder in "Robin" target */,
+			);
 			path = Robin;
 			sourceTree = "<group>";
 		};
 		CA8B266F2F694EC200A82B5A /* RobinTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = RobinTests;
-			sourceTree = "<group>";
-		};
-		CA8B26792F694EC200A82B5A /* RobinUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = RobinUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -68,13 +68,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		CA8B26732F694EC200A82B5A /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -84,7 +77,6 @@
 				CA8B26892F694EC200A82B5A /* RCLIEngine.xcframework */,
 				CA8B26612F694EC200A82B5A /* Robin */,
 				CA8B266F2F694EC200A82B5A /* RobinTests */,
-				CA8B26792F694EC200A82B5A /* RobinUITests */,
 				CA8B26602F694EC200A82B5A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -94,7 +86,6 @@
 			children = (
 				CA8B265F2F694EC200A82B5A /* Robin.app */,
 				CA8B266C2F694EC200A82B5A /* RobinTests.xctest */,
-				CA8B26762F694EC200A82B5A /* RobinUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -147,29 +138,6 @@
 			productReference = CA8B266C2F694EC200A82B5A /* RobinTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		CA8B26752F694EC200A82B5A /* RobinUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = CA8B26862F694EC200A82B5A /* Build configuration list for PBXNativeTarget "RobinUITests" */;
-			buildPhases = (
-				CA8B26722F694EC200A82B5A /* Sources */,
-				CA8B26732F694EC200A82B5A /* Frameworks */,
-				CA8B26742F694EC200A82B5A /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				CA8B26782F694EC200A82B5A /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				CA8B26792F694EC200A82B5A /* RobinUITests */,
-			);
-			name = RobinUITests;
-			packageProductDependencies = (
-			);
-			productName = RobinUITests;
-			productReference = CA8B26762F694EC200A82B5A /* RobinUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -187,11 +155,7 @@
 						CreatedOnToolsVersion = 26.3;
 						TestTargetID = CA8B265E2F694EC200A82B5A;
 					};
-					CA8B26752F694EC200A82B5A = {
-						CreatedOnToolsVersion = 26.3;
-						TestTargetID = CA8B265E2F694EC200A82B5A;
 					};
-				};
 			};
 			buildConfigurationList = CA8B265A2F694EC200A82B5A /* Build configuration list for PBXProject "Robin" */;
 			developmentRegion = en;
@@ -202,6 +166,9 @@
 			);
 			mainGroup = CA8B26562F694EC200A82B5A;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				CA8B27872F69597300A82B5A /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CA8B26602F694EC200A82B5A /* Products */;
 			projectDirPath = "";
@@ -209,7 +176,6 @@
 			targets = (
 				CA8B265E2F694EC200A82B5A /* Robin */,
 				CA8B266B2F694EC200A82B5A /* RobinTests */,
-				CA8B26752F694EC200A82B5A /* RobinUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -223,13 +189,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		CA8B266A2F694EC200A82B5A /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		CA8B26742F694EC200A82B5A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,13 +212,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		CA8B26722F694EC200A82B5A /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -267,11 +219,6 @@
 			isa = PBXTargetDependency;
 			target = CA8B265E2F694EC200A82B5A /* Robin */;
 			targetProxy = CA8B266D2F694EC200A82B5A /* PBXContainerItemProxy */;
-		};
-		CA8B26782F694EC200A82B5A /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = CA8B265E2F694EC200A82B5A /* Robin */;
-			targetProxy = CA8B26772F694EC200A82B5A /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -401,6 +348,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = Robin/Robin.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -412,6 +360,8 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Robin/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Robin;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Robin needs microphone access to hear your voice commands and dictation.";
@@ -464,6 +414,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = Robin/Robin.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -475,6 +426,8 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Robin/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Robin;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Robin needs microphone access to hear your voice commands and dictation.";
@@ -564,44 +517,6 @@
 			};
 			name = Release;
 		};
-		CA8B26872F694EC200A82B5A /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = HPNVTN3424;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "ClearStack-Dev.RobinUITests";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = Robin;
-			};
-			name = Debug;
-		};
-		CA8B26882F694EC200A82B5A /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = HPNVTN3424;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "ClearStack-Dev.RobinUITests";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = Robin;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -632,16 +547,18 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		CA8B26862F694EC200A82B5A /* Build configuration list for PBXNativeTarget "RobinUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				CA8B26872F694EC200A82B5A /* Debug */,
-				CA8B26882F694EC200A82B5A /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CA8B27872F69597300A82B5A /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = CA8B26572F694EC200A82B5A /* Project object */;
 }
