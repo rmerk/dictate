@@ -177,6 +177,95 @@ struct ModelCatalogTests {
         )
     }
 
+    @Test func metalRTDeleteTargetUsesMetalRTSubdirectory() throws {
+        let entry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-small"))
+        let target = ModelsSettingsDeleteTarget.metalRTSTT(entry)
+
+        #expect(target.relativePath == "metalrt/\(entry.localDirectory)")
+        #expect(target.isDirectory)
+    }
+
+    @MainActor
+    @Test func deletingMetalRTDirectoryRemovesInstalledState() throws {
+        let entry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-small"))
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let installDirectory = URL(fileURLWithPath: MetalRTSTTCatalog.installDirectory(for: entry, modelsDir: root.path))
+
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(
+            at: installDirectory,
+            withIntermediateDirectories: true
+        )
+        for relativePath in entry.files.map(\.relativePath) {
+            let fileURL = installDirectory.appendingPathComponent(relativePath)
+            try Data(relativePath.utf8).write(to: fileURL)
+        }
+
+        #expect(MetalRTSTTCatalog.installedIDs(modelsDir: root.path).contains(entry.id))
+
+        let downloadService = ModelDownloadService(modelsDir: root.path)
+        let deleteTarget = ModelsSettingsDeleteTarget.metalRTSTT(entry)
+        try downloadService.deleteModel(
+            path: deleteTarget.relativePath,
+            isDirectory: deleteTarget.isDirectory
+        )
+
+        #expect(!MetalRTSTTCatalog.installedIDs(modelsDir: root.path).contains(entry.id))
+    }
+
+    @Test func deletePolicyProtectsActiveAndSelectedModels() throws {
+        let offlineSTTEntry = try #require(ModelCatalog.models(ofType: .stt).first)
+        let metalRTEntry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-medium"))
+
+        #expect(
+            ModelsSettingsDeletePolicy.isProtected(
+                offlineSTTEntry,
+                activeModelId: nil,
+                selectedOfflineSTTModelId: offlineSTTEntry.id,
+                activeTTSModelId: nil
+            )
+        )
+        #expect(
+            !ModelsSettingsDeletePolicy.canDelete(
+                isInstalled: true,
+                isProtected: ModelsSettingsDeletePolicy.isProtected(
+                    offlineSTTEntry,
+                    activeModelId: nil,
+                    selectedOfflineSTTModelId: offlineSTTEntry.id,
+                    activeTTSModelId: nil
+                )
+            )
+        )
+
+        #expect(
+            ModelsSettingsDeletePolicy.isProtected(
+                metalRTEntry,
+                runtimeModelId: metalRTEntry.id,
+                selectedModelId: nil
+            )
+        )
+        #expect(
+            ModelsSettingsDeletePolicy.isProtected(
+                metalRTEntry,
+                runtimeModelId: nil,
+                selectedModelId: metalRTEntry.id
+            )
+        )
+        #expect(
+            !ModelsSettingsDeletePolicy.canDelete(
+                isInstalled: true,
+                isProtected: ModelsSettingsDeletePolicy.isProtected(
+                    metalRTEntry,
+                    runtimeModelId: nil,
+                    selectedModelId: metalRTEntry.id
+                )
+            )
+        )
+        #expect(ModelsSettingsDeletePolicy.canDelete(isInstalled: true, isProtected: false))
+    }
+
     private func assertResolvedFileURLs(for entry: MetalRTSTTEntry, expectedPaths: [String]) {
         let actualPaths = entry.files.map { remotePath(in: $0.url) }
         #expect(actualPaths == expectedPaths)

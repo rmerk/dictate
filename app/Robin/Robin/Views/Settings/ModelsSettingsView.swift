@@ -1,11 +1,86 @@
 import SwiftUI
 
+enum ModelsSettingsDeleteTarget: Equatable, Sendable {
+    case model(ModelCatalogEntry)
+    case metalRTSTT(MetalRTSTTEntry)
+
+    var name: String {
+        switch self {
+        case .model(let entry):
+            entry.name
+        case .metalRTSTT(let entry):
+            entry.name
+        }
+    }
+
+    var sizeBytes: Int64 {
+        switch self {
+        case .model(let entry):
+            entry.sizeBytes
+        case .metalRTSTT(let entry):
+            entry.sizeBytes
+        }
+    }
+
+    var relativePath: String {
+        switch self {
+        case .model(let entry):
+            entry.localPath
+        case .metalRTSTT(let entry):
+            "metalrt/\(entry.localDirectory)"
+        }
+    }
+
+    var isDirectory: Bool {
+        switch self {
+        case .model(let entry):
+            entry.isArchive
+        case .metalRTSTT:
+            true
+        }
+    }
+}
+
+enum ModelsSettingsDeletePolicy {
+    static func isInstalled(_ entry: ModelCatalogEntry, downloadedPaths: Set<String>) -> Bool {
+        downloadedPaths.contains(entry.localPath)
+    }
+
+    static func isInstalled(_ entry: MetalRTSTTEntry, downloadedModelIDs: Set<String>) -> Bool {
+        downloadedModelIDs.contains(entry.id)
+    }
+
+    static func isProtected(_ entry: ModelCatalogEntry,
+                            activeModelId: String?,
+                            selectedOfflineSTTModelId: String?,
+                            activeTTSModelId: String?) -> Bool {
+        switch entry.type {
+        case .llm:
+            return entry.id == activeModelId
+        case .stt:
+            return entry.id == selectedOfflineSTTModelId
+        case .tts:
+            return entry.id == activeTTSModelId
+        }
+    }
+
+    static func isProtected(_ entry: MetalRTSTTEntry,
+                            runtimeModelId: String?,
+                            selectedModelId: String?) -> Bool {
+        entry.id == runtimeModelId || entry.id == selectedModelId
+    }
+
+    static func canDelete(isInstalled: Bool, isProtected: Bool) -> Bool {
+        isInstalled && !isProtected
+    }
+}
+
 struct ModelsSettingsView: View {
     @Environment(EngineService.self) private var engine
     @Environment(ModelDownloadService.self) private var downloads
     @State private var downloadedPaths: Set<String> = []
     @State private var downloadedMetalRTSTTModelIDs: Set<String> = []
-    @State private var modelToDelete: ModelCatalogEntry?
+    @State private var pendingDeleteTarget: ModelsSettingsDeleteTarget?
 
     private let modelsDir = NSString(
         string: "~/Library/RCLI/models").expandingTildeInPath
@@ -26,14 +101,14 @@ struct ModelsSettingsView: View {
         .task { refreshInstalledState() }
         .alert("Delete Model",
                isPresented: Binding(
-                   get: { modelToDelete != nil },
-                   set: { if !$0 { modelToDelete = nil } }
+                   get: { pendingDeleteTarget != nil },
+                   set: { if !$0 { pendingDeleteTarget = nil } }
                )) {
-            Button("Cancel", role: .cancel) { modelToDelete = nil }
+            Button("Cancel", role: .cancel) { pendingDeleteTarget = nil }
             Button("Delete", role: .destructive) { deleteModel() }
         } message: {
-            if let m = modelToDelete {
-                Text("Delete \(m.name)? This will free \(formatSize(m.sizeBytes)).")
+            if let target = pendingDeleteTarget {
+                Text("Delete \(target.name)? This will free \(formatSize(target.sizeBytes)).")
             }
         }
     }
@@ -93,15 +168,15 @@ struct ModelsSettingsView: View {
 
     @ViewBuilder
     private func modelRow(_ entry: ModelCatalogEntry) -> some View {
-        let isActive = isModelActive(entry)
-        let isDownloaded = downloadedPaths.contains(entry.localPath)
+        let isProtected = isModelProtected(entry)
+        let isDownloaded = isModelInstalled(entry)
         let progress = downloads.activeDownloads[entry.id]
 
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(entry.name).font(.body.bold())
-                    if entry.isRecommended && !isActive {
+                    if entry.isRecommended && !isProtected {
                         Text("Recommended")
                             .font(.caption2)
                             .padding(.horizontal, 6)
@@ -125,10 +200,10 @@ struct ModelsSettingsView: View {
                 } else {
                     downloadingView(entry, progress: progress)
                 }
-            } else if isActive {
+            } else if isProtected {
                 activeView(entry)
             } else if isDownloaded {
-                downloadedView(entry)
+                downloadedView(entry, deleteTarget: deleteTarget(for: entry))
             } else if case .remote = entry.source {
                 downloadButton(entry)
             }
@@ -202,18 +277,12 @@ struct ModelsSettingsView: View {
                         .foregroundColor(.secondary)
                 }
             }
-            Button {
-                // disabled — can't delete active model
-            } label: {
-                Image(systemName: "trash")
-                    .foregroundColor(.secondary.opacity(0.3))
-            }
-            .buttonStyle(.plain)
-            .disabled(true)
+            disabledDeleteButton()
         }
     }
 
-    private func downloadedView(_ entry: ModelCatalogEntry) -> some View {
+    private func downloadedView(_ entry: ModelCatalogEntry,
+                                deleteTarget: ModelsSettingsDeleteTarget?) -> some View {
         HStack(spacing: 8) {
             Button(selectionButtonTitle(for: entry)) {
                 Task { await activateModel(entry) }
@@ -221,13 +290,13 @@ struct ModelsSettingsView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
 
-            Button {
-                modelToDelete = entry
-            } label: {
-                Image(systemName: "trash")
-                    .foregroundColor(.secondary)
+            if let deleteTarget {
+                deleteButton {
+                    pendingDeleteTarget = deleteTarget
+                }
+            } else {
+                disabledDeleteButton()
             }
-            .buttonStyle(.plain)
         }
     }
 
@@ -235,7 +304,8 @@ struct ModelsSettingsView: View {
     private func metalRTSTTRow(_ entry: MetalRTSTTEntry) -> some View {
         let isRuntimeActive = engine.activeMetalRTSTTModelId == entry.id
         let isSelected = engine.selectedMetalRTSTTModelId == entry.id
-        let isDownloaded = downloadedMetalRTSTTModelIDs.contains(entry.id)
+        let isProtected = isMetalRTSTTProtected(entry)
+        let isDownloaded = isMetalRTSTTInstalled(entry)
         let progress = downloads.activeDownloads[entry.id]
 
         HStack {
@@ -277,7 +347,11 @@ struct ModelsSettingsView: View {
             } else if isRuntimeActive {
                 runtimeActiveView
             } else if isDownloaded {
-                applyMetalRTSTTButton(entry, isSelected: isSelected)
+                downloadedMetalRTSTTView(
+                    entry,
+                    isSelected: isSelected,
+                    deleteTarget: isProtected ? nil : deleteTarget(for: entry)
+                )
             } else {
                 downloadAndApplyMetalRTSTTButton(entry)
             }
@@ -397,15 +471,15 @@ struct ModelsSettingsView: View {
     }
 
     private func deleteModel() {
-        guard let entry = modelToDelete else { return }
-        modelToDelete = nil
-
-        // Service-layer guard: don't delete active model
-        guard !isModelActive(entry) else { return }
+        guard let target = pendingDeleteTarget else { return }
+        pendingDeleteTarget = nil
+        guard canDelete(target) else { return }
 
         do {
             try downloads.deleteModel(
-                path: entry.localPath, isDirectory: entry.isArchive)
+                path: target.relativePath,
+                isDirectory: target.isDirectory
+            )
             refreshInstalledState()
         } catch {
             print("Delete failed: \(error)")
@@ -436,11 +510,61 @@ struct ModelsSettingsView: View {
 
     // MARK: - Helpers
 
-    private func isModelActive(_ entry: ModelCatalogEntry) -> Bool {
-        switch entry.type {
-        case .llm: return entry.id == engine.activeModelId
-        case .stt: return entry.id == engine.selectedOfflineSTTModelId
-        case .tts: return entry.id == engine.activeTTSModelId
+    private func isModelInstalled(_ entry: ModelCatalogEntry) -> Bool {
+        ModelsSettingsDeletePolicy.isInstalled(entry, downloadedPaths: downloadedPaths)
+    }
+
+    private func isMetalRTSTTInstalled(_ entry: MetalRTSTTEntry) -> Bool {
+        ModelsSettingsDeletePolicy.isInstalled(entry, downloadedModelIDs: downloadedMetalRTSTTModelIDs)
+    }
+
+    private func isModelProtected(_ entry: ModelCatalogEntry) -> Bool {
+        ModelsSettingsDeletePolicy.isProtected(
+            entry,
+            activeModelId: engine.activeModelId,
+            selectedOfflineSTTModelId: engine.selectedOfflineSTTModelId,
+            activeTTSModelId: engine.activeTTSModelId
+        )
+    }
+
+    private func isMetalRTSTTProtected(_ entry: MetalRTSTTEntry) -> Bool {
+        ModelsSettingsDeletePolicy.isProtected(
+            entry,
+            runtimeModelId: engine.activeMetalRTSTTModelId,
+            selectedModelId: engine.selectedMetalRTSTTModelId
+        )
+    }
+
+    private func deleteTarget(for entry: ModelCatalogEntry) -> ModelsSettingsDeleteTarget? {
+        let isInstalled = isModelInstalled(entry)
+        let isProtected = isModelProtected(entry)
+        guard ModelsSettingsDeletePolicy.canDelete(isInstalled: isInstalled, isProtected: isProtected) else {
+            return nil
+        }
+        return .model(entry)
+    }
+
+    private func deleteTarget(for entry: MetalRTSTTEntry) -> ModelsSettingsDeleteTarget? {
+        let isInstalled = isMetalRTSTTInstalled(entry)
+        let isProtected = isMetalRTSTTProtected(entry)
+        guard ModelsSettingsDeletePolicy.canDelete(isInstalled: isInstalled, isProtected: isProtected) else {
+            return nil
+        }
+        return .metalRTSTT(entry)
+    }
+
+    private func canDelete(_ target: ModelsSettingsDeleteTarget) -> Bool {
+        switch target {
+        case .model(let entry):
+            ModelsSettingsDeletePolicy.canDelete(
+                isInstalled: isModelInstalled(entry),
+                isProtected: isModelProtected(entry)
+            )
+        case .metalRTSTT(let entry):
+            ModelsSettingsDeletePolicy.canDelete(
+                isInstalled: isMetalRTSTTInstalled(entry),
+                isProtected: isMetalRTSTTProtected(entry)
+            )
         }
     }
 
@@ -514,13 +638,16 @@ struct ModelsSettingsView: View {
     }
 
     private var runtimeActiveView: some View {
-        Text("Runtime")
-            .font(.caption)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 2)
-            .background(.secondary.opacity(0.12))
-            .foregroundColor(.primary)
-            .cornerRadius(4)
+        HStack(spacing: 8) {
+            Text("Runtime")
+                .font(.caption)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(.secondary.opacity(0.12))
+                .foregroundColor(.primary)
+                .cornerRadius(4)
+            disabledDeleteButton()
+        }
     }
 
     private func applyMetalRTSTTButton(_ entry: MetalRTSTTEntry, isSelected: Bool) -> some View {
@@ -573,6 +700,40 @@ struct ModelsSettingsView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
         }
+    }
+
+    private func downloadedMetalRTSTTView(_ entry: MetalRTSTTEntry,
+                                          isSelected: Bool,
+                                          deleteTarget: ModelsSettingsDeleteTarget?) -> some View {
+        HStack(spacing: 8) {
+            applyMetalRTSTTButton(entry, isSelected: isSelected)
+            if let deleteTarget {
+                deleteButton {
+                    pendingDeleteTarget = deleteTarget
+                }
+            } else {
+                disabledDeleteButton()
+            }
+        }
+    }
+
+    private func deleteButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "trash")
+                .foregroundColor(.secondary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func disabledDeleteButton() -> some View {
+        Button {
+            // Intentionally disabled for protected models.
+        } label: {
+            Image(systemName: "trash")
+                .foregroundColor(.secondary.opacity(0.3))
+        }
+        .buttonStyle(.plain)
+        .disabled(true)
     }
 
     private func refreshInstalledState() {
