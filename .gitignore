@@ -70,5 +70,8 @@ EXTERNAL/
 # Superpowers brainstorm artifacts
 .superpowers/
 
+# Git worktrees
+.worktrees/
+
 # Profiling data
 *.profraw
