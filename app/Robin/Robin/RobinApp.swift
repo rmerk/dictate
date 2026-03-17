@@ -196,6 +196,105 @@ struct WindowAppearanceSetter: NSViewRepresentable {
     }
 }
 
+enum SettingsWindowCoordinator {
+    enum RegularPresentationReason: Hashable {
+        case onboarding
+        case settings
+    }
+
+    @MainActor private static var regularPresentationReasons: Set<RegularPresentationReason> = []
+
+    /// Tracks a regular-window flow and promotes the menu bar app only when the
+    /// first such window is about to be shown.
+    @MainActor
+    private static func beginRegularPresentation(
+        for reason: RegularPresentationReason,
+        setActivationPolicy: (NSApplication.ActivationPolicy) -> Void,
+        activate: (Bool) -> Void
+    ) {
+        regularPresentationReasons.insert(reason)
+        if regularPresentationReasons.count == 1 {
+            setActivationPolicy(.regular)
+        }
+        activate(true)
+    }
+
+    /// Releases a regular-window flow and demotes the app back to menu bar mode
+    /// only after the last regular window flow has finished.
+    @MainActor
+    private static func endRegularPresentation(
+        for reason: RegularPresentationReason,
+        setActivationPolicy: (NSApplication.ActivationPolicy) -> Void
+    ) {
+        guard regularPresentationReasons.remove(reason) != nil else { return }
+        guard regularPresentationReasons.isEmpty else { return }
+        setActivationPolicy(.accessory)
+    }
+
+    /// Promotes the menu bar app to a regular app before opening Settings so
+    /// macOS can reliably bring the window in front of other apps.
+    @MainActor
+    static func presentSettings(
+        setActivationPolicy: (NSApplication.ActivationPolicy) -> Void = { NSApp.setActivationPolicy($0) },
+        activate: (Bool) -> Void = { NSApp.activate(ignoringOtherApps: $0) },
+        openSettings: () -> Void
+    ) {
+        beginRegularPresentation(
+            for: .settings,
+            setActivationPolicy: setActivationPolicy,
+            activate: activate
+        )
+        openSettings()
+    }
+
+    /// Promotes the app while onboarding is visible.
+    @MainActor
+    static func beginOnboardingPresentation(
+        setActivationPolicy: (NSApplication.ActivationPolicy) -> Void = { NSApp.setActivationPolicy($0) },
+        activate: (Bool) -> Void = { NSApp.activate(ignoringOtherApps: $0) }
+    ) {
+        beginRegularPresentation(
+            for: .onboarding,
+            setActivationPolicy: setActivationPolicy,
+            activate: activate
+        )
+    }
+
+    /// Restores the menu bar presentation after the Settings window closes.
+    @MainActor
+    static func restoreMenuBarMode(
+        setActivationPolicy: (NSApplication.ActivationPolicy) -> Void = { NSApp.setActivationPolicy($0) }
+    ) {
+        endRegularPresentation(for: .settings, setActivationPolicy: setActivationPolicy)
+    }
+
+    /// Releases the onboarding presentation state after the welcome flow ends.
+    @MainActor
+    static func endOnboardingPresentation(
+        setActivationPolicy: (NSApplication.ActivationPolicy) -> Void = { NSApp.setActivationPolicy($0) }
+    ) {
+        endRegularPresentation(for: .onboarding, setActivationPolicy: setActivationPolicy)
+    }
+
+    /// Returns true when the notification belongs to the shared Settings window.
+    static func isSettingsWindow(_ window: NSWindow) -> Bool {
+        window.title == "Settings"
+    }
+
+    /// Only refocuses Settings when Robin is still the active app, which avoids
+    /// stealing focus back after the user intentionally clicked another app.
+    static func shouldRefocusSettingsWindow(_ window: NSWindow, appIsActive: Bool) -> Bool {
+        isSettingsWindow(window) && appIsActive
+    }
+
+    /// Re-activates Settings after native controls temporarily steal key status.
+    @MainActor
+    static func refocusSettingsWindow(_ window: NSWindow) {
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+}
+
 @main
 struct RobinApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate

@@ -22,10 +22,22 @@ struct SettingsView: View {
             for: NSWindow.didResignKeyNotification)
         ) { notification in
             guard let window = notification.object as? NSWindow,
-                  window.title == "Settings" else { return }
+                  SettingsWindowCoordinator.isSettingsWindow(window) else { return }
             DispatchQueue.main.async {
-                NSApp.activate(ignoringOtherApps: true)
-                window.makeKeyAndOrderFront(nil)
+                guard SettingsWindowCoordinator.shouldRefocusSettingsWindow(
+                    window,
+                    appIsActive: NSApp.isActive
+                ) else { return }
+                SettingsWindowCoordinator.refocusSettingsWindow(window)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSWindow.willCloseNotification)
+        ) { notification in
+            guard let window = notification.object as? NSWindow,
+                  SettingsWindowCoordinator.isSettingsWindow(window) else { return }
+            DispatchQueue.main.async {
+                SettingsWindowCoordinator.restoreMenuBarMode()
             }
         }
     }

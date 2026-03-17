@@ -5,6 +5,7 @@ struct MenuBarView: View {
     @Environment(HotkeyService.self) private var hotkey
     @Environment(PermissionService.self) private var permissions
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
@@ -69,8 +70,10 @@ struct MenuBarView: View {
 
             Divider()
 
-            SettingsLink {
-                Text("Settings...")
+            Button("Settings...") {
+                SettingsWindowCoordinator.presentSettings {
+                    openSettings()
+                }
             }
             .buttonStyle(.plain)
 

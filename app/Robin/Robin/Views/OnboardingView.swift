@@ -58,8 +58,10 @@ struct OnboardingView: View {
         }
         .frame(width: 560, height: 420)
         .onAppear {
-            NSApp.setActivationPolicy(.regular)
-            NSApp.activate(ignoringOtherApps: true)
+            SettingsWindowCoordinator.beginOnboardingPresentation()
+        }
+        .onDisappear {
+            SettingsWindowCoordinator.endOnboardingPresentation()
         }
     }
 
@@ -208,7 +210,6 @@ struct OnboardingView: View {
     }
 
     private func finishOnboarding() {
-        NSApp.setActivationPolicy(.accessory)
         isPresented = false
         dismissWindow(id: "onboarding")
 
