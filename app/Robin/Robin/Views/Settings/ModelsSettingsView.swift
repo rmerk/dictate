@@ -47,8 +47,20 @@ struct ModelsSettingsView: View {
 
     @ViewBuilder
     private func modelSection(type: ModelType) -> some View {
+        let activeId = switch type {
+        case .llm: engine.activeModelId
+        case .stt: engine.activeSTTModelId
+        case .tts: engine.activeTTSModelId
+        }
+        let sorted = ModelCatalog.models(ofType: type).sorted { a, b in
+            let aActive = a.id == activeId
+            let bActive = b.id == activeId
+            if aActive != bActive { return aActive }
+            if a.isRecommended != b.isRecommended { return a.isRecommended }
+            return false
+        }
         Section(type.displayName) {
-            ForEach(ModelCatalog.models(ofType: type)) { entry in
+            ForEach(sorted) { entry in
                 modelRow(entry)
             }
         }
@@ -66,7 +78,7 @@ struct ModelsSettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(entry.name).font(.body.bold())
-                    if entry.isRecommended {
+                    if entry.isRecommended && !isActive {
                         Text("Recommended")
                             .font(.caption2)
                             .padding(.horizontal, 6)
@@ -259,6 +271,7 @@ struct ModelsSettingsView: View {
             case .tts:
                 try engine.switchTTSModel(entry.id)
             }
+            refreshDownloadedState()
         } catch {
             print("Activation failed: \(error)")
         }
