@@ -13,6 +13,9 @@ struct AdvancedSettingsView: View {
                     Text("Maximum Quality").tag("quality")
                 }
                 .pickerStyle(.segmented)
+                .onChange(of: performanceMode) { _, newValue in
+                    try? ConfigService.shared.write(key: "performance_mode", value: newValue)
+                }
                 Text(performanceDescription)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -42,6 +45,9 @@ struct AdvancedSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+        .onAppear {
+            performanceMode = ConfigService.shared.read(key: "performance_mode") ?? "balanced"
+        }
     }
 
     private var performanceDescription: String {

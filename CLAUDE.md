@@ -91,6 +91,23 @@ src/
 - **System prompt KV caching**: Reuses llama.cpp KV cache state across queries.
 - **Hybrid tool calling**: Tier 1 keyword match + Tier 2 LLM-based extraction.
 
+### Robin macOS App (SwiftUI)
+
+The macOS GUI app lives at `app/Robin/` (not `app/RCLI/` — that directory has duplicate source but no xcodeproj).
+- Xcode project: `app/Robin/Robin.xcodeproj`
+- Build: Open in Xcode, Cmd+B. No CLI build for the app — it requires the xcframework + Xcode.
+- Run: Cmd+R from Xcode, or open `Robin.app` directly
+- SPM deps: Sparkle (auto-updates)
+- `python3 scripts/generate_icon.py` — regenerates all macOS icon sizes into Assets.xcassets
+
+### SwiftUI Gotchas (Robin App)
+
+- **`.foregroundStyle(.blue)` is ambiguous** — use `.foregroundColor(.blue)` or `Color.blue` when Swift can't resolve `HierarchicalShapeStyle` vs `Color`
+- **`.sheet()` doesn't work inside `MenuBarExtra`** — use a separate `Window` scene with `openWindow(id:)` instead
+- **`MenuBarExtra` content is lazy** — views inside the content closure aren't created until the user clicks the icon. Use `@NSApplicationDelegateAdaptor` + `AppDelegate.applicationDidFinishLaunching` for startup logic (engine init, hotkey registration, etc.), not `.task {}` inside MenuBarExtra content
+- **Robin app services live on `AppDelegate`** — `EngineService`, `HotkeyService`, `OverlayService`, `PermissionService` are owned by `AppDelegate` and injected via `.environment(appDelegate.engine)` etc.
+- **Background `URLSession` requires `com.apple.application-identifier`** — use `URLSessionConfiguration.default` during development without proper signing
+
 ### Dictate Subsystem
 
 Background daemon with global hotkey (default Cmd+J) for system-wide voice dictation.

@@ -3,12 +3,22 @@ import ServiceManagement
 
 struct GeneralSettingsView: View {
     @Environment(EngineService.self) private var engine
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @AppStorage("appearance") private var appearanceRaw = "system"
+    @State private var launchAtLogin = false
     @State private var selectedPersonality = "default"
     @State private var outputMode = "both"
 
     var body: some View {
         Form {
+            Section("Appearance") {
+                Picker("Color scheme", selection: $appearanceRaw) {
+                    Text("System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+                .pickerStyle(.segmented)
+            }
+
             Section("Startup") {
                 Toggle("Launch at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, newValue in
@@ -44,9 +54,17 @@ struct GeneralSettingsView: View {
                     Text("Both").tag("both")
                 }
                 .pickerStyle(.segmented)
+                .onChange(of: outputMode) { _, newValue in
+                    try? ConfigService.shared.write(key: "output_mode", value: newValue)
+                }
             }
         }
         .formStyle(.grouped)
         .padding()
+        .onAppear {
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+            selectedPersonality = engine.personality
+            outputMode = ConfigService.shared.read(key: "output_mode") ?? "both"
+        }
     }
 }

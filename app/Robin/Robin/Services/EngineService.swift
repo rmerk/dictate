@@ -2,6 +2,12 @@ import Foundation
 import Observation
 import CRCLIEngine
 
+/// Sendable wrapper for RCLIHandle to safely cross actor isolation boundaries.
+/// Safety: all C API calls through the handle are serialized on engineQueue.
+struct SendableHandle: @unchecked Sendable {
+    let raw: RCLIHandle
+}
+
 @MainActor
 @Observable
 final class EngineService: EngineProviding {
@@ -28,14 +34,27 @@ final class EngineService: EngineProviding {
     let toolTraceStream: AsyncStream<ToolTraceEvent>
     let responseStream: AsyncStream<String>
 
-    // — Private: continuations (nonisolated(unsafe) for C trampoline access) —
-    nonisolated(unsafe) private let transcriptContinuation: AsyncStream<TranscriptEvent>.Continuation
-    nonisolated(unsafe) private let stateContinuation: AsyncStream<PipelineState>.Continuation
-    nonisolated(unsafe) private let toolTraceContinuation: AsyncStream<ToolTraceEvent>.Continuation
-    nonisolated(unsafe) private let responseContinuation: AsyncStream<String>.Continuation
+    // — Private: continuations (Sendable lets — accessible from C trampolines) —
+    private let transcriptContinuation: AsyncStream<TranscriptEvent>.Continuation
+    private let stateContinuation: AsyncStream<PipelineState>.Continuation
+    private let toolTraceContinuation: AsyncStream<ToolTraceEvent>.Continuation
+    private let responseContinuation: AsyncStream<String>.Continuation
 
     // — Engine (internal for extensions in separate files) —
+    // Wrapped as SendableHandle to safely cross isolation boundaries into engineQueue.
     var handle: RCLIHandle?
+
+    /// Return handle wrapped for Sendable closure capture, or throw if engine not ready.
+    func requireHandle() throws -> SendableHandle {
+        guard let h = handle else { throw RCLIError.engineNotReady }
+        return SendableHandle(raw: h)
+    }
+
+    /// Return handle wrapped for Sendable closure capture, or nil if engine not ready.
+    func optionalHandle() -> SendableHandle? {
+        guard let h = handle else { return nil }
+        return SendableHandle(raw: h)
+    }
     let engineQueue = DispatchQueue(label: "ai.rcli.engine")
     let ttsQueue = DispatchQueue(label: "ai.rcli.tts")
     private var audioTimer: Timer?
@@ -60,6 +79,16 @@ final class EngineService: EngineProviding {
 
         // Start internal stream consumers that update @Observable properties
         startStreamConsumers()
+    }
+
+    deinit {
+        // Finish continuations so stream consumer Tasks exit their for-await loops.
+        // audioTimer is handled by shutdown() — deinit cannot access @MainActor-isolated
+        // stored properties directly on all Swift compiler versions.
+        transcriptContinuation.finish()
+        stateContinuation.finish()
+        toolTraceContinuation.finish()
+        responseContinuation.finish()
     }
 
     private func startStreamConsumers() {
@@ -89,6 +118,12 @@ final class EngineService: EngineProviding {
 
     func initialize(modelsDir: String, gpuLayers: Int) async throws {
         lifecycleState = .loading
+        let trampolines = (
+            transcript: Self.transcriptTrampoline,
+            state: Self.stateTrampoline,
+            toolTrace: Self.toolTraceTrampoline,
+            response: Self.responseTrampoline
+        )
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             engineQueue.async { [weak self] in
                 guard let self else {
@@ -108,18 +143,25 @@ final class EngineService: EngineProviding {
                 }
                 // Register callbacks
                 let ptr = Unmanaged.passUnretained(self).toOpaque()
-                rcli_set_transcript_callback(h, Self.transcriptTrampoline, ptr)
-                rcli_set_state_callback(h, Self.stateTrampoline, ptr)
-                rcli_set_tool_trace_callback(h, Self.toolTraceTrampoline, ptr)
-                rcli_set_response_callback(h, Self.responseTrampoline, ptr)
+                rcli_set_transcript_callback(h, trampolines.transcript, ptr)
+                rcli_set_state_callback(h, trampolines.state, ptr)
+                rcli_set_tool_trace_callback(h, trampolines.toolTrace, ptr)
+                rcli_set_response_callback(h, trampolines.response, ptr)
 
+                let sh = SendableHandle(raw: h)
+                let model = String(cString: rcli_get_llm_model(h))
+                let tts = String(cString: rcli_get_tts_model(h))
+                let stt = String(cString: rcli_get_stt_model(h))
+                let engine = String(cString: rcli_get_active_engine(h))
+                let pers = String(cString: rcli_get_personality(h))
                 Task { @MainActor in
-                    self.handle = h
+                    self.handle = sh.raw
                     self.isReady = true
-                    self.activeModel = String(cString: rcli_get_llm_model(h))
-                    self.activeTTSModel = String(cString: rcli_get_tts_model(h))
-                    self.activeSTTModel = String(cString: rcli_get_stt_model(h))
-                    self.activeEngine = String(cString: rcli_get_active_engine(h))
+                    self.activeModel = model
+                    self.activeTTSModel = tts
+                    self.activeSTTModel = stt
+                    self.activeEngine = engine
+                    self.personality = pers
                 }
                 cont.resume()
             }
@@ -130,6 +172,10 @@ final class EngineService: EngineProviding {
 
     func initializeSTTOnly(modelsDir: String, gpuLayers: Int) async throws {
         lifecycleState = .loading
+        let trampolines = (
+            transcript: Self.transcriptTrampoline,
+            state: Self.stateTrampoline
+        )
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             engineQueue.async { [weak self] in
                 guard let self else {
@@ -148,11 +194,12 @@ final class EngineService: EngineProviding {
                     return
                 }
                 let ptr = Unmanaged.passUnretained(self).toOpaque()
-                rcli_set_transcript_callback(h, Self.transcriptTrampoline, ptr)
-                rcli_set_state_callback(h, Self.stateTrampoline, ptr)
+                rcli_set_transcript_callback(h, trampolines.transcript, ptr)
+                rcli_set_state_callback(h, trampolines.state, ptr)
 
+                let sh = SendableHandle(raw: h)
                 Task { @MainActor in
-                    self.handle = h
+                    self.handle = sh.raw
                     self.isReady = true
                 }
                 cont.resume()
@@ -164,12 +211,29 @@ final class EngineService: EngineProviding {
     func shutdown() {
         audioTimer?.invalidate()
         audioTimer = nil
+
+        // Finish all continuations so stream consumer tasks exit their for-await loops
+        transcriptContinuation.finish()
+        stateContinuation.finish()
+        toolTraceContinuation.finish()
+        responseContinuation.finish()
+
         guard let h = handle else { return }
+        let sh = SendableHandle(raw: h)
+
+        // Deregister callbacks synchronously before niling handle to prevent
+        // dangling Unmanaged pointer access if a C callback fires between the two.
+        engineQueue.sync {
+            rcli_deregister_all_callbacks(sh.raw)
+        }
+
         handle = nil
         isReady = false
+        lifecycleState = .loading
+
+        // Destroy asynchronously — may take time to drain in-flight operations
         engineQueue.async {
-            rcli_deregister_all_callbacks(h)
-            rcli_destroy(h)
+            rcli_destroy(sh.raw)
         }
     }
 
@@ -178,9 +242,16 @@ final class EngineService: EngineProviding {
     private func startAudioMetering() {
         audioTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             guard let self else { return }
-            Task { @MainActor in
-                guard let h = self.handle else { return }
-                self.audioLevel = rcli_get_audio_level(h)
+            // Capture handle on MainActor, then dispatch the C API call to engineQueue
+            // to match the thread-safety contract for all other C API calls.
+            Task { @MainActor [weak self] in
+                guard let self, let sh = self.optionalHandle() else { return }
+                self.engineQueue.async { [weak self] in
+                    let level = rcli_get_audio_level(sh.raw)
+                    Task { @MainActor [weak self] in
+                        self?.audioLevel = level
+                    }
+                }
             }
         }
     }

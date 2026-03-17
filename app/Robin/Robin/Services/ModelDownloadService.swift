@@ -49,7 +49,7 @@ final class ModelDownloadService: NSObject {
     func cancelDownload(modelId: String) {
         activeDownloads.removeValue(forKey: modelId)
         destinationFilenames.removeValue(forKey: modelId)
-        session.getAllTasks { [weak self] tasks in
+        session.getAllTasks { tasks in
             tasks.first { $0.taskDescription == modelId }?.cancel()
         }
         // Do NOT resume continuation here — let didCompleteWithError handle it
@@ -57,41 +57,54 @@ final class ModelDownloadService: NSObject {
     }
 
     func extractArchive(archivePath: String, to directory: String,
-                        archiveDirName: String?, renameTo localPath: String) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-        process.arguments = ["xjf", archivePath, "-C", directory]
-        try process.run()
-        process.waitUntilExit()
+                        archiveDirName: String?, renameTo localPath: String) async throws {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+                    process.arguments = ["xjf", archivePath, "-C", directory]
+                    try process.run()
+                    process.waitUntilExit()
 
-        guard process.terminationStatus == 0 else {
-            // Clean up partial extraction
-            let extractedDir = archiveDirName ?? localPath
-            let partialPath = (directory as NSString).appendingPathComponent(extractedDir)
-            try? FileManager.default.removeItem(atPath: partialPath)
-            throw RCLIError.commandFailed("Archive extraction failed (exit \(process.terminationStatus))")
-        }
+                    guard process.terminationStatus == 0 else {
+                        // Clean up partial extraction
+                        let extractedDir = archiveDirName ?? localPath
+                        let partialPath = (directory as NSString).appendingPathComponent(extractedDir)
+                        try? FileManager.default.removeItem(atPath: partialPath)
+                        cont.resume(throwing: RCLIError.commandFailed(
+                            "Archive extraction failed (exit \(process.terminationStatus))"))
+                        return
+                    }
 
-        // Rename archive dir to expected localPath if needed
-        if let archiveDir = archiveDirName, archiveDir != localPath {
-            let srcPath = (directory as NSString).appendingPathComponent(archiveDir)
-            let dstPath = (directory as NSString).appendingPathComponent(localPath)
-            if FileManager.default.fileExists(atPath: dstPath) {
-                try FileManager.default.removeItem(atPath: dstPath)
+                    // Rename archive dir to expected localPath if needed
+                    if let archiveDir = archiveDirName, archiveDir != localPath {
+                        let srcPath = (directory as NSString).appendingPathComponent(archiveDir)
+                        let dstPath = (directory as NSString).appendingPathComponent(localPath)
+                        if FileManager.default.fileExists(atPath: dstPath) {
+                            try FileManager.default.removeItem(atPath: dstPath)
+                        }
+                        try FileManager.default.moveItem(atPath: srcPath, toPath: dstPath)
+                    }
+
+                    // Verify extraction succeeded
+                    let finalPath = (directory as NSString).appendingPathComponent(localPath)
+                    var isDir: ObjCBool = false
+                    guard FileManager.default.fileExists(atPath: finalPath, isDirectory: &isDir),
+                          isDir.boolValue else {
+                        cont.resume(throwing: RCLIError.commandFailed(
+                            "Extracted directory not found: \(localPath)"))
+                        return
+                    }
+
+                    // Only delete archive after verified extraction
+                    try? FileManager.default.removeItem(atPath: archivePath)
+                    cont.resume()
+                } catch {
+                    cont.resume(throwing: error)
+                }
             }
-            try FileManager.default.moveItem(atPath: srcPath, toPath: dstPath)
         }
-
-        // Verify extraction succeeded
-        let finalPath = (directory as NSString).appendingPathComponent(localPath)
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: finalPath, isDirectory: &isDir),
-              isDir.boolValue else {
-            throw RCLIError.commandFailed("Extracted directory not found: \(localPath)")
-        }
-
-        // Only delete archive after verified extraction
-        try? FileManager.default.removeItem(atPath: archivePath)
     }
 
     func deleteModel(path: String, isDirectory: Bool) throws {

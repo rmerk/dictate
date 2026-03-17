@@ -155,7 +155,7 @@
 						CreatedOnToolsVersion = 26.3;
 						TestTargetID = CA8B265E2F694EC200A82B5A;
 					};
-					};
+				};
 			};
 			buildConfigurationList = CA8B265A2F694EC200A82B5A /* Build configuration list for PBXProject "Robin" */;
 			developmentRegion = en;

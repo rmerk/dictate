@@ -4,6 +4,8 @@ struct MenuBarView: View {
     @Environment(EngineService.self) private var engine
     @Environment(HotkeyService.self) private var hotkey
     @Environment(PermissionService.self) private var permissions
+    @Environment(\.openWindow) private var openWindow
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -45,21 +47,23 @@ struct MenuBarView: View {
                         icon: "mic.fill",
                         label: "Dictation",
                         shortcut: "\u{2318}J",
-                        enabled: permissions.microphoneGranted && permissions.accessibilityGranted
+                        enabled: permissions.microphoneGranted && permissions.accessibilityGranted,
+                        action: { hotkey.onHotkeyPressed?() }
                     )
                     QuickActionCard(
                         icon: "text.bubble",
                         label: "Panel",
                         shortcut: "\u{2318}\u{21E7}J",
-                        enabled: true
+                        enabled: true,
+                        action: { openWindow(id: "panel") }
                     )
                 }
             }
 
             Divider()
 
-            Button("Settings...") {
-                // TODO: open settings (Plan 3)
+            SettingsLink {
+                Text("Settings...")
             }
             .buttonStyle(.plain)
 
@@ -70,6 +74,11 @@ struct MenuBarView: View {
         }
         .padding()
         .frame(width: 280)
+        .task {
+            if !hasCompletedOnboarding {
+                openWindow(id: "onboarding")
+            }
+        }
     }
 
     private var statusColor: Color {
@@ -125,21 +134,26 @@ struct QuickActionCard: View {
     let label: String
     let shortcut: String
     let enabled: Bool
+    let action: () -> Void
 
     var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.title2)
-            Text(label)
-                .font(.caption)
-            Text(shortcut)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.title2)
+                Text(label)
+                    .font(.caption)
+                Text(shortcut)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(.quaternary)
+            .cornerRadius(8)
+            .opacity(enabled ? 1.0 : 0.4)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(.quaternary)
-        .cornerRadius(8)
-        .opacity(enabled ? 1.0 : 0.4)
+        .buttonStyle(.plain)
+        .disabled(!enabled)
     }
 }

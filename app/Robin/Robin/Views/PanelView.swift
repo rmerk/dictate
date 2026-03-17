@@ -2,9 +2,10 @@ import SwiftUI
 
 struct PanelView: View {
     @Environment(EngineService.self) private var engine
-    @State private var conversation = ConversationStore()
+    @Environment(ConversationStore.self) private var conversation
     @State private var inputText = ""
     @State private var isProcessing = false
+    @State private var processingTask: Task<Void, Never>?
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -116,8 +117,17 @@ struct PanelView: View {
                 .disabled(isProcessing)
 
             if isProcessing {
-                ProgressView()
-                    .controlSize(.small)
+                Button {
+                    processingTask?.cancel()
+                    engine.stopProcessing()
+                    isProcessing = false
+                    processingTask = nil
+                } label: {
+                    Image(systemName: "stop.circle.fill")
+                        .font(.title3)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.red)
             }
 
             Button {
@@ -151,16 +161,19 @@ struct PanelView: View {
         conversation.addUserMessage(text, method: .typed)
         isProcessing = true
 
-        Task {
+        processingTask = Task {
             let start = Date()
             do {
                 let response = try await engine.processCommand(text)
                 let ms = Int(Date().timeIntervalSince(start) * 1000)
                 conversation.addAssistantMessage(response, responseTimeMs: ms)
+            } catch is CancellationError {
+                conversation.addAssistantMessage("Cancelled.")
             } catch {
                 conversation.addAssistantMessage("Error: \(error.localizedDescription)")
             }
             isProcessing = false
+            processingTask = nil
         }
     }
 

@@ -83,8 +83,8 @@ struct ModelsSettingsView: View {
                             .font(.caption2)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(.green.opacity(0.2))
-                            .foregroundColor(.green)
+                            .background(.secondary.opacity(0.12))
+                            .foregroundColor(.primary)
                             .cornerRadius(4)
                     }
                 }
@@ -151,6 +151,7 @@ struct ModelsSettingsView: View {
             Button("Retry") {
                 Task { await startDownload(entry) }
             }
+            .buttonStyle(.borderedProminent)
             .controlSize(.small)
         }
     }
@@ -162,8 +163,8 @@ struct ModelsSettingsView: View {
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
-                    .background(.green.opacity(0.2))
-                    .foregroundColor(.green)
+                    .background(.secondary.opacity(0.12))
+                    .foregroundColor(.primary)
                     .cornerRadius(4)
                 if entry.type == .stt || entry.type == .tts {
                     Text("Takes effect on next launch")
@@ -187,6 +188,7 @@ struct ModelsSettingsView: View {
             Button("Activate") {
                 Task { await activateModel(entry) }
             }
+            .buttonStyle(.borderedProminent)
             .controlSize(.small)
 
             Button {
@@ -245,7 +247,7 @@ struct ModelsSettingsView: View {
             if entry.isArchive {
                 let archivePath = (modelsDir as NSString)
                     .appendingPathComponent(destFilename)
-                try downloads.extractArchive(
+                try await downloads.extractArchive(
                     archivePath: archivePath, to: modelsDir,
                     archiveDirName: entry.archiveDirName,
                     renameTo: entry.localPath)

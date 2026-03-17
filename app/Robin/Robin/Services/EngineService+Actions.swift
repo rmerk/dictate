@@ -1,33 +1,42 @@
 import Foundation
 import CRCLIEngine
 
+private struct ActionInfoJSON: Codable {
+    let name: String
+    let description: String?
+    let category: String?
+    let enabled: Bool?
+}
+
 extension EngineService {
     func listActions() async -> [ActionInfo] {
-        guard let h = handle else { return [] }
+        guard let sh = optionalHandle() else { return [] }
         return await withCheckedContinuation { cont in
             engineQueue.async {
-                guard let json = rcli_action_list(h) else {
+                guard let json = rcli_action_list(sh.raw) else {
                     cont.resume(returning: [])
                     return
                 }
                 let str = String(cString: json)
-                guard let data = str.data(using: .utf8),
-                      let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-                else {
+                guard let data = str.data(using: .utf8) else {
                     cont.resume(returning: [])
                     return
                 }
-                let actions = arr.compactMap { dict -> ActionInfo? in
-                    guard let name = dict["name"] as? String else { return nil }
-                    return ActionInfo(
-                        id: name,
-                        name: name,
-                        description: dict["description"] as? String ?? "",
-                        category: dict["category"] as? String ?? "other",
-                        isEnabled: dict["enabled"] as? Bool ?? true
-                    )
+                do {
+                    let decoded = try JSONDecoder().decode([ActionInfoJSON].self, from: data)
+                    let actions = decoded.map { json in
+                        ActionInfo(
+                            id: json.name,
+                            name: json.name,
+                            description: json.description ?? "",
+                            category: json.category ?? "other",
+                            isEnabled: json.enabled ?? true
+                        )
+                    }
+                    cont.resume(returning: actions)
+                } catch {
+                    cont.resume(returning: [])
                 }
-                cont.resume(returning: actions)
             }
         }
     }

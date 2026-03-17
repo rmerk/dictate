@@ -3,6 +3,7 @@ import Observation
 import AppKit
 import ApplicationServices
 import AVFoundation
+import CRCLIEngine
 
 @MainActor
 @Observable
@@ -16,7 +17,7 @@ final class PermissionService {
     func startPolling() {
         checkAll()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.checkAll() }
+            Task { @MainActor [weak self] in self?.checkAll() }
         }
     }
 
@@ -31,7 +32,7 @@ final class PermissionService {
         stopPolling()
         let interval: TimeInterval = fast ? 2.0 : 30.0
         pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.checkAll() }
+            Task { @MainActor [weak self] in self?.checkAll() }
         }
     }
 
@@ -63,6 +64,8 @@ final class PermissionService {
     }
 
     private func checkAccessibility() -> Bool {
-        AXIsProcessTrusted()
+        // Use the C API ground-truth check (CGEventTapCreate test) rather than
+        // AXIsProcessTrusted(), which is unreliable for unsigned dev builds.
+        rcli_hotkey_check_accessibility() != 0
     }
 }

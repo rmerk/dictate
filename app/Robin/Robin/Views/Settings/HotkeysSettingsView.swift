@@ -2,7 +2,7 @@ import SwiftUI
 
 struct HotkeysSettingsView: View {
     @Environment(HotkeyService.self) private var hotkey
-    @State private var dictationHotkey = "⌘J"
+    @Environment(\.hotkeySetup) private var hotkeySetup
 
     var body: some View {
         Form {
@@ -10,14 +10,9 @@ struct HotkeysSettingsView: View {
                 HStack {
                     Text("Dictation hotkey")
                     Spacer()
-                    Text(dictationHotkey)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(.quaternary)
-                        .cornerRadius(6)
-                        .font(.system(.body, design: .monospaced))
+                    HotkeyRecorder()
                 }
-                Text("⌘J is also used by Safari for Downloads. Choose a different shortcut if this conflicts.")
+                Text("Click the shortcut to change it. At least one modifier (⌘, ⌥, ⌃, ⇧) is required.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -26,10 +21,20 @@ struct HotkeysSettingsView: View {
                 HStack {
                     Text("Hotkey listener")
                     Spacer()
-                    Image(systemName: hotkey.isListening ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundStyle(hotkey.isListening ? .green : .red)
-                    Text(hotkey.isListening ? "Active" : "Inactive")
-                        .foregroundStyle(.secondary)
+                    Toggle("", isOn: Binding(
+                        get: { hotkey.isListening },
+                        set: { newValue in
+                            if newValue {
+                                // Use the setup action to ensure onHotkeyPressed is wired
+                                // before starting the C-level listener.
+                                hotkeySetup()
+                            } else {
+                                hotkey.stop()
+                            }
+                        }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
                 }
             }
         }
@@ -37,3 +42,16 @@ struct HotkeysSettingsView: View {
         .padding()
     }
 }
+// MARK: - Environment Key
+
+private struct HotkeySetupKey: EnvironmentKey {
+    static let defaultValue: () -> Void = {}
+}
+
+extension EnvironmentValues {
+    var hotkeySetup: () -> Void {
+        get { self[HotkeySetupKey.self] }
+        set { self[HotkeySetupKey.self] = newValue }
+    }
+}
+

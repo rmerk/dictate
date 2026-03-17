@@ -1,6 +1,14 @@
 import Foundation
 import CRCLIEngine
 
+private struct ModelInfoJSON: Codable {
+    let id: String
+    let name: String
+    let size_bytes: Int64
+    let type: String
+    let is_downloaded: Bool
+}
+
 extension EngineService {
     var activeModelId: String? {
         ModelCatalog.all.first { $0.name == activeModel }?.id
@@ -15,10 +23,9 @@ extension EngineService {
     }
 
     func switchModel(_ id: String) async throws {
-        guard let h = handle else { throw RCLIError.engineNotReady }
-        let sh = SendableHandle(raw: h)
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            engineQueue.async { [weak self] in
+        let sh = try requireHandle()
+        let (name, engine) = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<(String, String), Error>) in
+            engineQueue.async {
                 let result = rcli_switch_llm(sh.raw, id)
                 if result != 0 {
                     cont.resume(throwing: RCLIError.modelLoadFailed(id))
@@ -26,14 +33,12 @@ extension EngineService {
                 }
                 let name = String(cString: rcli_get_llm_model(sh.raw))
                 let engine = String(cString: rcli_get_active_engine(sh.raw))
-                Task { @MainActor [weak self] in
-                    self?.activeModel = name
-                    self?.activeEngine = engine
-                    try? ConfigService.shared.write(key: "model", value: id)
-                }
-                cont.resume()
+                cont.resume(returning: (name, engine))
             }
         }
+        activeModel = name
+        activeEngine = engine
+        try? ConfigService.shared.write(key: "model", value: id)
     }
 
     func switchSTTModel(_ id: String) throws {
@@ -53,8 +58,7 @@ extension EngineService {
     }
 
     func listAvailableModels() async throws -> [ModelInfo] {
-        guard let h = handle else { throw RCLIError.engineNotReady }
-        let sh = SendableHandle(raw: h)
+        let sh = try requireHandle()
         return try await withCheckedThrowingContinuation { cont in
             engineQueue.async {
                 guard let json = rcli_list_available_models(sh.raw) else {
@@ -64,25 +68,22 @@ extension EngineService {
                 let str = String(cString: json)
                 free(json)
 
-                guard let data = str.data(using: .utf8),
-                      let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-                else {
+                guard let data = str.data(using: .utf8) else {
                     cont.resume(returning: [])
                     return
                 }
 
-                let models = arr.compactMap { dict -> ModelInfo? in
-                    guard let id = dict["id"] as? String,
-                          let name = dict["name"] as? String,
-                          let size = dict["size_bytes"] as? Int64,
-                          let typeStr = dict["type"] as? String,
-                          let type = ModelType(rawValue: typeStr),
-                          let downloaded = dict["is_downloaded"] as? Bool
-                    else { return nil }
-                    return ModelInfo(id: id, name: name, sizeBytes: size,
-                                    type: type, isDownloaded: downloaded)
+                do {
+                    let decoded = try JSONDecoder().decode([ModelInfoJSON].self, from: data)
+                    let models = decoded.compactMap { json -> ModelInfo? in
+                        guard let type = ModelType(rawValue: json.type) else { return nil }
+                        return ModelInfo(id: json.id, name: json.name, sizeBytes: json.size_bytes,
+                                        type: type, isDownloaded: json.is_downloaded)
+                    }
+                    cont.resume(returning: models)
+                } catch {
+                    cont.resume(returning: [])
                 }
-                cont.resume(returning: models)
             }
         }
     }
@@ -105,8 +106,7 @@ extension EngineService {
     }
 
     func getInfo() async -> String {
-        guard let h = handle else { return "{}" }
-        let sh = SendableHandle(raw: h)
+        guard let sh = optionalHandle() else { return "{}" }
         return await withCheckedContinuation { cont in
             engineQueue.async {
                 let result = rcli_get_info(sh.raw)
@@ -117,8 +117,7 @@ extension EngineService {
     }
 
     func getContextInfo() async -> (promptTokens: Int, contextSize: Int) {
-        guard let h = handle else { return (0, 0) }
-        let sh = SendableHandle(raw: h)
+        guard let sh = optionalHandle() else { return (0, 0) }
         return await withCheckedContinuation { cont in
             engineQueue.async {
                 var tokens: Int32 = 0

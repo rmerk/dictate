@@ -3,25 +3,25 @@ import CRCLIEngine
 
 extension EngineService {
     func startListening() {
-        guard let h = handle else { return }
-        engineQueue.async { rcli_start_listening(h) }
+        guard let sh = optionalHandle() else { return }
+        engineQueue.async { rcli_start_listening(sh.raw) }
     }
 
     func stopListening() {
-        guard let h = handle else { return }
-        engineQueue.async { rcli_stop_listening(h) }
+        guard let sh = optionalHandle() else { return }
+        engineQueue.async { rcli_stop_listening(sh.raw) }
     }
 
     func startCapture() {
-        guard let h = handle else { return }
-        engineQueue.async { rcli_start_capture(h) }
+        guard let sh = optionalHandle() else { return }
+        engineQueue.async { rcli_start_capture(sh.raw) }
     }
 
     func stopAndTranscribe() async throws -> String {
-        guard let h = handle else { throw RCLIError.engineNotReady }
+        let sh = try requireHandle()
         return try await withCheckedThrowingContinuation { cont in
             engineQueue.async {
-                let result = rcli_stop_capture_and_transcribe(h)
+                let result = rcli_stop_capture_and_transcribe(sh.raw)
                 guard let result else {
                     cont.resume(throwing: RCLIError.transcriptionFailed)
                     return
@@ -38,10 +38,10 @@ extension EngineService {
     }
 
     func startVoiceMode(wakePhrase: String) async throws {
-        guard let h = handle else { throw RCLIError.engineNotReady }
+        let sh = try requireHandle()
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             engineQueue.async {
-                let result = rcli_start_voice_mode(h, wakePhrase)
+                let result = rcli_start_voice_mode(sh.raw, wakePhrase)
                 if result != 0 {
                     cont.resume(throwing: RCLIError.initFailed("Voice mode start failed"))
                     return
@@ -52,7 +52,7 @@ extension EngineService {
     }
 
     func stopVoiceMode() {
-        guard let h = handle else { return }
-        engineQueue.async { rcli_stop_voice_mode(h) }
+        guard let sh = optionalHandle() else { return }
+        engineQueue.async { rcli_stop_voice_mode(sh.raw) }
     }
 }

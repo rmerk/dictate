@@ -3,11 +3,13 @@ import UserNotifications
 
 struct OnboardingView: View {
     @Environment(EngineService.self) private var engine
+    @Environment(HotkeyService.self) private var hotkey
     @Environment(PermissionService.self) private var permissions
     @Binding var isPresented: Bool
+    @Environment(\.dismissWindow) private var dismissWindow
 
     @State private var currentStep = 0
-    @State private var selectedModel: String? = "qwen3-0.6b"
+    @State private var selectedModel: String? = ModelCatalog.models(ofType: .llm).first?.id
     @Environment(ModelDownloadService.self) private var downloadService
     @State private var downloadStarted = false
 
@@ -89,15 +91,16 @@ struct OnboardingView: View {
             Text("Choose one to download:")
                 .foregroundStyle(.secondary)
 
-            ModelCard(id: "qwen3-0.6b", name: "Qwen3 0.6B",
-                      detail: "Fast responses, 456 MB", tag: "Recommended",
-                      selected: selectedModel == "qwen3-0.6b") {
-                selectedModel = "qwen3-0.6b"
-            }
-            ModelCard(id: "qwen3.5-2b", name: "Qwen3.5 2B",
-                      detail: "Smarter, 1.5 GB", tag: nil,
-                      selected: selectedModel == "qwen3.5-2b") {
-                selectedModel = "qwen3.5-2b"
+            ForEach(ModelCatalog.models(ofType: .llm).prefix(3)) { entry in
+                ModelCard(
+                    id: entry.id,
+                    name: entry.name,
+                    detail: "\(entry.description), \(formatSize(entry.sizeBytes))",
+                    tag: entry.isRecommended ? "Recommended" : nil,
+                    selected: selectedModel == entry.id
+                ) {
+                    selectedModel = entry.id
+                }
             }
 
             // Download progress
@@ -117,6 +120,14 @@ struct OnboardingView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func formatSize(_ bytes: Int64) -> String {
+        if bytes >= 1_000_000_000 {
+            return String(format: "%.1f GB", Double(bytes) / 1_000_000_000)
+        } else {
+            return "\(bytes / 1_000_000) MB"
         }
     }
 
@@ -145,20 +156,13 @@ struct OnboardingView: View {
 
     private var hotkeyStep: some View {
         VStack(spacing: 20) {
-            Text("Set your dictation shortcut")
+            Text("Your dictation shortcut")
                 .font(.headline)
 
-            Text("⌘J")
-                .font(.system(size: 36, design: .monospaced))
-                .padding(20)
-                .background(.quaternary)
-                .cornerRadius(12)
+            HotkeyRecorder(font: .system(size: 36, design: .monospaced), padding: 20)
 
-            Text("Press ⌘J anywhere to start dictating.")
+            Text("Press \(HotkeyFormatter.displayString(for: hotkey.hotkeyString)) anywhere to start dictating. Click to change.")
                 .foregroundStyle(.secondary)
-            Text("You can change this anytime in Settings.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
         }
     }
 
@@ -172,28 +176,47 @@ struct OnboardingView: View {
     }
 
     private func startDownload() {
-        guard let modelId = selectedModel else { return }
+        guard let modelId = selectedModel,
+              let entry = ModelCatalog.all.first(where: { $0.id == modelId }),
+              case .remote(let url) = entry.source
+        else { return }
+
         downloadStarted = true
+        let modelsDir = NSString(string: "~/Library/RCLI/models").expandingTildeInPath
+        let destFilename = entry.isArchive ? "\(entry.id).tar.bz2" : entry.localPath
+
         Task {
             do {
-                let models = try await engine.listAvailableModels()
-                // Find URL for selected model and download
-                // Implementation depends on model registry exposing download URLs
-                _ = models // suppress unused warning
-                _ = modelId
-            } catch { /* handle */ }
+                try await downloadService.download(
+                    modelId: entry.id, name: entry.name,
+                    url: url, destinationFilename: destFilename)
+
+                if entry.isArchive {
+                    let archivePath = (modelsDir as NSString)
+                        .appendingPathComponent(destFilename)
+                    try await downloadService.extractArchive(
+                        archivePath: archivePath, to: modelsDir,
+                        archiveDirName: entry.archiveDirName,
+                        renameTo: entry.localPath)
+                }
+            } catch is CancellationError {
+                // User cancelled — no action needed
+            } catch {
+                // Error is reflected through downloadService.activeDownloads[modelId].failed
+            }
         }
     }
 
     private func finishOnboarding() {
         NSApp.setActivationPolicy(.accessory)
         isPresented = false
+        dismissWindow(id: "onboarding")
 
         // Send notification
         Task {
             let content = UNMutableNotificationContent()
             content.title = "You're all set!"
-            content.body = "Press ⌘J anywhere to start dictating."
+            content.body = "Press \(HotkeyFormatter.displayString(for: hotkey.hotkeyString)) anywhere to start dictating."
             let request = UNNotificationRequest(
                 identifier: "onboarding-complete",
                 content: content, trigger: nil)
@@ -211,32 +234,38 @@ struct StepIndicator: View {
     var body: some View {
         HStack(spacing: 0) {
             ForEach(Array(steps.enumerated()), id: \.offset) { index, name in
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(index <= currentStep ? Color.blue : Color.secondary.opacity(0.3))
-                        .frame(width: 24, height: 24)
-                        .overlay {
-                            if index < currentStep {
-                                Image(systemName: "checkmark")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.white)
-                            } else {
-                                Text("\(index + 1)")
-                                    .font(.caption2)
-                                    .foregroundStyle(index == currentStep ? .white : .secondary)
-                            }
-                        }
-                    Text(name)
-                        .font(.caption)
-                        .foregroundStyle(index == currentStep ? .primary : .secondary)
-                }
+                stepBadge(index: index, name: name)
                 if index < steps.count - 1 {
                     Rectangle()
-                        .fill(index < currentStep ? Color.blue : Color.secondary.opacity(0.3))
+                        .fill(index < currentStep ? Color.accentColor : Color.secondary.opacity(0.3))
                         .frame(height: 2)
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: 40)
                 }
             }
+        }
+    }
+
+    private func stepBadge(index: Int, name: String) -> some View {
+        VStack(spacing: 6) {
+            Circle()
+                .fill(index <= currentStep ? Color.accentColor : Color.secondary.opacity(0.3))
+                .frame(width: 28, height: 28)
+                .overlay {
+                    if index < currentStep {
+                        Image(systemName: "checkmark")
+                            .font(.caption.bold())
+                            .foregroundStyle(.white)
+                    } else {
+                        Text("\(index + 1)")
+                            .font(.caption)
+                            .foregroundStyle(index == currentStep ? .white : .secondary)
+                    }
+                }
+            Text(name)
+                .font(.caption)
+                .lineLimit(1)
+                .fixedSize()
+                .foregroundStyle(index <= currentStep ? .primary : .secondary)
         }
     }
 }

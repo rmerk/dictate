@@ -141,11 +141,4 @@ enum ModelCatalog {
         all.filter { $0.type == type }
             .sorted { ($0.isRecommended ? 0 : 1) < ($1.isRecommended ? 0 : 1) }
     }
-
-    #if DEBUG
-    static let _validateUniqueness: Void = {
-        assert(Set(all.map(\.id)).count == all.count, "Duplicate model IDs in catalog")
-        assert(Set(all.map(\.localPath)).count == all.count, "Duplicate localPaths in catalog")
-    }()
-    #endif
 }

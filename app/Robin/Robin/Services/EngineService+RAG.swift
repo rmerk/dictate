@@ -3,10 +3,10 @@ import CRCLIEngine
 
 extension EngineService {
     func ragIngest(directory: String) async throws {
-        guard let h = handle else { throw RCLIError.engineNotReady }
+        let sh = try requireHandle()
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             engineQueue.async {
-                let result = rcli_rag_ingest(h, directory)
+                let result = rcli_rag_ingest(sh.raw, directory)
                 if result != 0 {
                     cont.resume(throwing: RCLIError.ragIngestFailed(directory))
                     return
@@ -17,10 +17,10 @@ extension EngineService {
     }
 
     func ragLoadIndex(path: String) async throws {
-        guard let h = handle else { throw RCLIError.engineNotReady }
+        let sh = try requireHandle()
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             engineQueue.async {
-                let result = rcli_rag_load_index(h, path)
+                let result = rcli_rag_load_index(sh.raw, path)
                 if result != 0 {
                     cont.resume(throwing: RCLIError.ragIngestFailed("Failed to load index at \(path)"))
                     return
@@ -31,10 +31,10 @@ extension EngineService {
     }
 
     func ragQuery(_ query: String) async throws -> String {
-        guard let h = handle else { throw RCLIError.engineNotReady }
+        let sh = try requireHandle()
         return try await withCheckedThrowingContinuation { cont in
             engineQueue.async {
-                guard let result = rcli_rag_query(h, query) else {
+                guard let result = rcli_rag_query(sh.raw, query) else {
                     cont.resume(throwing: RCLIError.commandFailed("RAG query returned nil"))
                     return
                 }
@@ -44,7 +44,7 @@ extension EngineService {
     }
 
     func ragClear() {
-        guard let h = handle else { return }
-        engineQueue.async { rcli_rag_clear(h) }
+        guard let sh = optionalHandle() else { return }
+        engineQueue.async { rcli_rag_clear(sh.raw) }
     }
 }
