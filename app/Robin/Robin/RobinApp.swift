@@ -7,6 +7,8 @@ struct RobinApp: App {
     @State private var hotkey = HotkeyService()
     @State private var overlay = OverlayService()
     @State private var permissions = PermissionService()
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @State private var showOnboarding = false
 
     var body: some Scene {
         MenuBarExtra {
@@ -16,10 +18,30 @@ struct RobinApp: App {
                 .environment(overlay)
                 .environment(permissions)
                 .task { await startApp() }
+                .sheet(isPresented: $showOnboarding) {
+                    OnboardingView(isPresented: $showOnboarding)
+                        .environment(engine)
+                        .environment(permissions)
+                        .onDisappear { hasCompletedOnboarding = true }
+                }
         } label: {
             Image(systemName: menuBarIcon)
         }
         .menuBarExtraStyle(.window)
+
+        Window("RCLI", id: "panel") {
+            PanelView()
+                .environment(engine)
+        }
+        .defaultSize(width: 420, height: 600)
+        .windowResizability(.contentMinSize)
+
+        Settings {
+            SettingsView()
+                .environment(engine)
+                .environment(hotkey)
+                .environment(permissions)
+        }
     }
 
     private var menuBarIcon: String {
@@ -36,6 +58,11 @@ struct RobinApp: App {
     }
 
     private func startApp() async {
+        // Show onboarding on first launch
+        if !hasCompletedOnboarding {
+            showOnboarding = true
+        }
+
         // Initialize overlay
         overlay.initialize()
 
