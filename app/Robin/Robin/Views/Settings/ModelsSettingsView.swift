@@ -75,6 +75,37 @@ enum ModelsSettingsDeletePolicy {
     }
 }
 
+enum ModelsSettingsSectionPolicy {
+    static func shouldShowSection(type: ModelType, isUsingMetalRT: Bool) -> Bool {
+        !(type == .stt && isUsingMetalRT)
+    }
+}
+
+enum ModelsSettingsCopy {
+    static let runtimeBadgeTitle = "In Use"
+    static let runtimeSubtitle = "Robin is using this speech recognition model right now."
+
+    static func sttSectionTitle(isUsingMetalRT: Bool) -> String {
+        isUsingMetalRT ? "Speech Recognition" : "Speech-to-Text"
+    }
+
+    static func metalRTSTTNoteText(isApplyingSelection: Bool,
+                                   selectedEntryName: String?,
+                                   runtimeEntryName: String?) -> String {
+        if isApplyingSelection, let selectedEntryName {
+            return "Robin is switching to \(selectedEntryName) in the background."
+        }
+
+        if let selectedEntryName,
+           let runtimeEntryName,
+           selectedEntryName != runtimeEntryName {
+            return "Robin will use \(selectedEntryName) after the switch finishes."
+        }
+
+        return "Choose the speech recognition model Robin uses right now."
+    }
+}
+
 struct ModelsSettingsView: View {
     @Environment(EngineService.self) private var engine
     @Environment(ModelDownloadService.self) private var downloads
@@ -92,7 +123,9 @@ struct ModelsSettingsView: View {
                 if engine.isUsingMetalRT {
                     metalRTSTTSection
                 }
-                modelSection(type: .stt)
+                if ModelsSettingsSectionPolicy.shouldShowSection(type: .stt, isUsingMetalRT: engine.isUsingMetalRT) {
+                    modelSection(type: .stt)
+                }
                 modelSection(type: .tts)
             }
 
@@ -143,7 +176,7 @@ struct ModelsSettingsView: View {
     }
 
     private var metalRTSTTSection: some View {
-        Section("MetalRT Speech-to-Text") {
+        Section(ModelsSettingsCopy.sttSectionTitle(isUsingMetalRT: true)) {
             runtimeSTTStatusRow
 
             ForEach(sortedMetalRTSTTEntries) { entry in
@@ -366,14 +399,14 @@ struct ModelsSettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(engine.activeRuntimeSTTName.isEmpty ? "Unknown" : engine.activeRuntimeSTTName)
                     .font(.body.bold())
-                Text(runtimeSTTSubtitle)
+                Text(ModelsSettingsCopy.runtimeSubtitle)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
 
             Spacer()
 
-            Text("Runtime")
+            Text(ModelsSettingsCopy.runtimeBadgeTitle)
                 .font(.caption)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
@@ -597,11 +630,6 @@ struct ModelsSettingsView: View {
         }
     }
 
-    private var runtimeSTTSubtitle: String {
-        let engineName = engine.activeEngine.isEmpty ? "engine" : engine.activeEngine
-        return "Current runtime via \(engineName)"
-    }
-
     private var sttSelectionNoteText: String {
         if engine.isUsingMetalRT {
             return "Offline STT selection below only affects the non-MetalRT engine. Use the MetalRT section above to change the active Whisper model."
@@ -611,20 +639,11 @@ struct ModelsSettingsView: View {
     }
 
     private var metalRTSTTNoteText: String {
-        if engine.isApplyingMetalRTSTTSelection,
-           let selectedId = engine.selectedMetalRTSTTModelId,
-           let entry = MetalRTSTTCatalog.entry(id: selectedId) {
-            return "Applying \(entry.name) in the background by restarting the engine."
-        }
-
-        if let selectedId = engine.selectedMetalRTSTTModelId,
-           let runtimeId = engine.activeMetalRTSTTModelId,
-           selectedId != runtimeId,
-           let entry = MetalRTSTTCatalog.entry(id: selectedId) {
-            return "\(entry.name) is saved in config, but the current runtime model is still shown above."
-        }
-
-        return "Selecting a MetalRT STT model updates `metalrt_stt` and restarts the engine in the background."
+        ModelsSettingsCopy.metalRTSTTNoteText(
+            isApplyingSelection: engine.isApplyingMetalRTSTTSelection,
+            selectedEntryName: engine.selectedMetalRTSTTModelId.flatMap { MetalRTSTTCatalog.entry(id: $0)?.name },
+            runtimeEntryName: engine.activeMetalRTSTTModelId.flatMap { MetalRTSTTCatalog.entry(id: $0)?.name }
+        )
     }
 
     private var sortedMetalRTSTTEntries: [MetalRTSTTEntry] {

@@ -266,6 +266,50 @@ struct ModelCatalogTests {
         #expect(ModelsSettingsDeletePolicy.canDelete(isInstalled: true, isProtected: false))
     }
 
+    @Test func metalRTHidesStandardSTTSection() {
+        #expect(!ModelsSettingsSectionPolicy.shouldShowSection(type: .stt, isUsingMetalRT: true))
+        #expect(ModelsSettingsSectionPolicy.shouldShowSection(type: .stt, isUsingMetalRT: false))
+        #expect(ModelsSettingsSectionPolicy.shouldShowSection(type: .llm, isUsingMetalRT: true))
+        #expect(ModelsSettingsSectionPolicy.shouldShowSection(type: .tts, isUsingMetalRT: true))
+    }
+
+    @Test func metalRTUsesBeginnerFriendlySpeechRecognitionCopy() {
+        #expect(
+            ModelsSettingsCopy.sttSectionTitle(isUsingMetalRT: true) == "Speech Recognition"
+        )
+        #expect(
+            ModelsSettingsCopy.sttSectionTitle(isUsingMetalRT: false) == "Speech-to-Text"
+        )
+        #expect(
+            ModelsSettingsCopy.metalRTSTTNoteText(
+                isApplyingSelection: false,
+                selectedEntryName: nil,
+                runtimeEntryName: nil
+            ) == "Choose the speech recognition model Robin uses right now."
+        )
+        #expect(
+            ModelsSettingsCopy.metalRTSTTNoteText(
+                isApplyingSelection: true,
+                selectedEntryName: "Whisper Small",
+                runtimeEntryName: nil
+            ) == "Robin is switching to Whisper Small in the background."
+        )
+        #expect(
+            ModelsSettingsCopy.metalRTSTTNoteText(
+                isApplyingSelection: false,
+                selectedEntryName: "Whisper Medium",
+                runtimeEntryName: "Whisper Small"
+            ) == "Robin will use Whisper Medium after the switch finishes."
+        )
+    }
+
+    @Test func runtimeSpeechRecognitionCopyIsBeginnerFriendly() {
+        #expect(ModelsSettingsCopy.runtimeBadgeTitle == "In Use")
+        #expect(
+            ModelsSettingsCopy.runtimeSubtitle == "Robin is using this speech recognition model right now."
+        )
+    }
+
     private func assertResolvedFileURLs(for entry: MetalRTSTTEntry, expectedPaths: [String]) {
         let actualPaths = entry.files.map { remotePath(in: $0.url) }
         #expect(actualPaths == expectedPaths)
