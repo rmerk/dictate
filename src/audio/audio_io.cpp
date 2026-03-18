@@ -8,6 +8,7 @@
 
 #if defined(__APPLE__) && !RASTACK_FILE_AUDIO_ONLY
 #include <CoreAudio/CoreAudio.h>
+#include <dispatch/dispatch.h>
 #endif
 
 namespace rastack {
@@ -303,6 +304,60 @@ OSStatus AudioIO::playback_callback(void* inRefCon,
     return noErr;
 }
 
+OSStatus AudioIO::device_changed_callback(
+    AudioObjectID inObjectID,
+    UInt32 inNumberAddresses,
+    const AudioObjectPropertyAddress inAddresses[],
+    void* inClientData) {
+    auto* self = static_cast<AudioIO*>(inClientData);
+
+    // Query the new default input device
+    AudioObjectPropertyAddress devProp;
+    devProp.mSelector = kAudioHardwarePropertyDefaultInputDevice;
+    devProp.mScope    = kAudioObjectPropertyScopeGlobal;
+    devProp.mElement  = kAudioObjectPropertyElementMain;
+    AudioDeviceID newDevId = 0;
+    UInt32 sz = sizeof(newDevId);
+    AudioObjectGetPropertyData(kAudioObjectSystemObject, &devProp, 0, nullptr, &sz, &newDevId);
+
+    // Skip if device hasn't actually changed
+    AudioDeviceID current = self->current_input_device_.load(std::memory_order_acquire);
+    if (newDevId == current) {
+        return noErr;
+    }
+
+    LOG_DEBUG("Audio", "Default input device changed: %u -> %u", current, newDevId);
+
+    // Capture alive flag by shared_ptr — prevents use-after-free if AudioIO
+    // is destroyed during the 200ms debounce window.
+    auto alive = self->alive_;
+
+    // Debounce: CoreAudio can fire multiple times during BT negotiation.
+    // Dispatch with a short delay so only the final device wins.
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, 200 * NSEC_PER_MSEC),
+        dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
+        ^{
+            // Check if AudioIO is still alive
+            if (!alive->load(std::memory_order_acquire)) {
+                return;
+            }
+            // Don't rebind if engine was stopped
+            if (!self->running_.load(std::memory_order_acquire)) {
+                return;
+            }
+            // Re-check after debounce — device may have changed again
+            AudioDeviceID latestDevId = 0;
+            UInt32 sz2 = sizeof(latestDevId);
+            AudioObjectGetPropertyData(kAudioObjectSystemObject, &devProp, 0, nullptr, &sz2, &latestDevId);
+            AudioDeviceID cur = self->current_input_device_.load(std::memory_order_acquire);
+            if (latestDevId != cur && latestDevId != 0) {
+                self->rebind_capture_device(latestDevId);
+            }
+        });
+    return noErr;
+}
+
 bool AudioIO::rebind_capture_device(AudioDeviceID new_device) {
     // Stop capture while we reconfigure
     bool was_running = running_.load(std::memory_order_acquire);
@@ -479,12 +534,31 @@ bool AudioIO::init_core_audio() {
 
     AudioUnitInitialize(playback_unit_);
 
+    // Listen for default input device changes (Bluetooth connect/disconnect, etc.)
+    AudioObjectPropertyAddress listenProp;
+    listenProp.mSelector = kAudioHardwarePropertyDefaultInputDevice;
+    listenProp.mScope    = kAudioObjectPropertyScopeGlobal;
+    listenProp.mElement  = kAudioObjectPropertyElementMain;
+    AudioObjectAddPropertyListener(kAudioObjectSystemObject, &listenProp,
+                                   device_changed_callback, this);
+
     LOG_DEBUG("Audio", "CoreAudio initialized (capture=%dHz->%dHz, playback=%dHz)",
             device_capture_rate_.load(std::memory_order_relaxed), config_.capture_rate, config_.playback_rate);
     return true;
 }
 
 void AudioIO::shutdown_core_audio() {
+    // Invalidate alive flag so any in-flight debounce blocks are no-ops
+    alive_->store(false, std::memory_order_release);
+
+    // Remove device-change listener (prevents new callbacks)
+    AudioObjectPropertyAddress listenProp;
+    listenProp.mSelector = kAudioHardwarePropertyDefaultInputDevice;
+    listenProp.mScope    = kAudioObjectPropertyScopeGlobal;
+    listenProp.mElement  = kAudioObjectPropertyElementMain;
+    AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &listenProp,
+                                      device_changed_callback, this);
+
     if (capture_unit_) {
         AudioComponentInstanceDispose(capture_unit_);
         capture_unit_ = nullptr;
