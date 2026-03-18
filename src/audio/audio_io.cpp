@@ -342,10 +342,6 @@ OSStatus AudioIO::device_changed_callback(
             if (!alive->load(std::memory_order_acquire)) {
                 return;
             }
-            // Don't rebind if engine was stopped
-            if (!self->running_.load(std::memory_order_acquire)) {
-                return;
-            }
             // Re-check after debounce — device may have changed again
             AudioDeviceID latestDevId = 0;
             UInt32 sz2 = sizeof(latestDevId);
@@ -548,16 +544,16 @@ bool AudioIO::init_core_audio() {
 }
 
 void AudioIO::shutdown_core_audio() {
-    // Invalidate alive flag so any in-flight debounce blocks are no-ops
-    alive_->store(false, std::memory_order_release);
-
-    // Remove device-change listener (prevents new callbacks)
+    // Remove device-change listener first — no new callbacks after this
     AudioObjectPropertyAddress listenProp;
     listenProp.mSelector = kAudioHardwarePropertyDefaultInputDevice;
     listenProp.mScope    = kAudioObjectPropertyScopeGlobal;
     listenProp.mElement  = kAudioObjectPropertyElementMain;
     AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &listenProp,
                                       device_changed_callback, this);
+
+    // Then invalidate alive flag — in-flight debounce blocks check this
+    alive_->store(false, std::memory_order_release);
 
     if (capture_unit_) {
         AudioComponentInstanceDispose(capture_unit_);
