@@ -159,7 +159,7 @@ struct QuickActionCard: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 60)
             .padding(.vertical, 8)
             .background(.quaternary)
             .cornerRadius(8)

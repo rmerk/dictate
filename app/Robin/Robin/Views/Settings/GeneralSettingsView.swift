@@ -6,8 +6,6 @@ struct GeneralSettingsView: View {
     @AppStorage("appearance") private var appearanceRaw = "system"
     @State private var launchAtLogin = false
     @State private var selectedPersonality = "default"
-    @State private var outputMode = "both"
-
     var body: some View {
         Form {
             Section("Appearance") {
@@ -47,24 +45,12 @@ struct GeneralSettingsView: View {
                 }
             }
 
-            Section("Output") {
-                Picker("Response mode", selection: $outputMode) {
-                    Text("Text only").tag("text")
-                    Text("Voice only").tag("voice")
-                    Text("Both").tag("both")
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: outputMode) { _, newValue in
-                    try? ConfigService.shared.write(key: "output_mode", value: newValue)
-                }
-            }
         }
         .formStyle(.grouped)
         .padding()
         .onAppear {
             launchAtLogin = SMAppService.mainApp.status == .enabled
             selectedPersonality = engine.personality
-            outputMode = ConfigService.shared.read(key: "output_mode") ?? "both"
         }
     }
 }

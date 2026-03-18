@@ -15,7 +15,7 @@ struct HotkeysSettingsView: View {
                     Spacer()
                     HotkeyRecorder(target: .dictation)
                 }
-                Text("Click the shortcut to change it. At least one modifier (⌘, ⌥, ⌃, ⇧) is required.")
+                Text("Voice → text, pasted at the cursor. Use this for writing, notes, and messages.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -26,7 +26,7 @@ struct HotkeysSettingsView: View {
                     Spacer()
                     HotkeyRecorder(target: .command)
                 }
-                Text("Always routes to the LLM and actions — bypasses auto-detect.")
+                Text("Voice → LLM + actions (e.g. \"open Safari\", \"create a note\"). Response appears in the conversation panel, not at the cursor.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

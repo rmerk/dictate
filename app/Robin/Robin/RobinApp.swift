@@ -150,7 +150,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ = hotkey.start()
     }
 
-    /// Shared helper: transcribed text → processCommand → TTS + conversation store.
+    /// Shared helper: transcribed text → LLM + actions → conversation store (text only, no TTS).
     @MainActor
     private static func runCommand(
         _ text: String,
@@ -161,7 +161,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         conversation.addUserMessage(text, method: .voice)
         let start = Date()
         do {
-            let response = try await engine.processAndSpeak(text)
+            let response = try await engine.processCommand(text)
             let ms = Int(Date().timeIntervalSince(start) * 1000)
             conversation.addAssistantMessage(response, responseTimeMs: ms)
         } catch {
