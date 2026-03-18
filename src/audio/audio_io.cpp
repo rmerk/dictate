@@ -245,7 +245,7 @@ OSStatus AudioIO::capture_callback(void* inRefCon,
         sum_sq += local_buf[i] * local_buf[i];
     self->current_rms_.store(std::sqrtf(sum_sq / inNumberFrames), std::memory_order_relaxed);
 
-    int dev_rate = self->device_capture_rate_;
+    int dev_rate = self->device_capture_rate_.load(std::memory_order_relaxed);
     int target   = self->config_.capture_rate;
 
     if (dev_rate > 0 && dev_rate != target) {
@@ -303,6 +303,99 @@ OSStatus AudioIO::playback_callback(void* inRefCon,
     return noErr;
 }
 
+bool AudioIO::rebind_capture_device(AudioDeviceID new_device) {
+    // Stop capture while we reconfigure
+    bool was_running = running_.load(std::memory_order_acquire);
+    if (was_running && capture_unit_) {
+        OSStatus stop_status = AudioOutputUnitStop(capture_unit_);
+        if (stop_status != noErr) {
+            LOG_ERROR("Audio", "Failed to stop capture unit during rebind: %d", (int)stop_status);
+        }
+    }
+
+    // Must uninitialize before changing device properties
+    AudioUnitUninitialize(capture_unit_);
+
+    // Remember old device for error recovery
+    AudioDeviceID old_device = current_input_device_.load(std::memory_order_relaxed);
+
+    // Bind new device
+    OSStatus status = AudioUnitSetProperty(
+        capture_unit_, kAudioOutputUnitProperty_CurrentDevice,
+        kAudioUnitScope_Global, 0, &new_device, sizeof(new_device));
+    if (status != noErr) {
+        LOG_ERROR("Audio", "Failed to set new input device %u: %d", new_device, (int)status);
+        // Recover: rebind to old device before re-initializing
+        if (old_device != 0) {
+            AudioUnitSetProperty(capture_unit_, kAudioOutputUnitProperty_CurrentDevice,
+                                 kAudioUnitScope_Global, 0, &old_device, sizeof(old_device));
+        }
+        AudioUnitInitialize(capture_unit_);
+        if (was_running) AudioOutputUnitStart(capture_unit_);
+        return false;
+    }
+
+    // Query new device's sample rate
+    AudioObjectPropertyAddress rateProp;
+    rateProp.mSelector = kAudioDevicePropertyNominalSampleRate;
+    rateProp.mScope    = kAudioObjectPropertyScopeInput;
+    rateProp.mElement  = kAudioObjectPropertyElementMain;
+    Float64 deviceRate = 48000.0;
+    UInt32 sz = sizeof(deviceRate);
+    AudioObjectGetPropertyData(new_device, &rateProp, 0, nullptr, &sz, &deviceRate);
+
+    int new_rate = (int)deviceRate;
+    device_capture_rate_.store(new_rate, std::memory_order_release);
+
+    // Update stream format to match new device rate
+    AudioStreamBasicDescription fmt = {};
+    fmt.mSampleRate       = new_rate;
+    fmt.mFormatID         = kAudioFormatLinearPCM;
+    fmt.mFormatFlags      = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
+    fmt.mBitsPerChannel   = 32;
+    fmt.mChannelsPerFrame = 1;
+    fmt.mFramesPerPacket  = 1;
+    fmt.mBytesPerFrame    = 4;
+    fmt.mBytesPerPacket   = 4;
+
+    status = AudioUnitSetProperty(capture_unit_, kAudioUnitProperty_StreamFormat,
+                         kAudioUnitScope_Output, 1, &fmt, sizeof(fmt));
+    if (status != noErr) {
+        LOG_ERROR("Audio", "Failed to set capture format for device %u: %d", new_device, (int)status);
+    }
+
+    status = AudioUnitInitialize(capture_unit_);
+    if (status != noErr) {
+        LOG_ERROR("Audio", "Failed to reinitialize capture unit for device %u: %d", new_device, (int)status);
+        // Recover: try to rebind to old device and restore its rate
+        if (old_device != 0) {
+            AudioUnitSetProperty(capture_unit_, kAudioOutputUnitProperty_CurrentDevice,
+                                 kAudioUnitScope_Global, 0, &old_device, sizeof(old_device));
+            // Query old device's sample rate to restore correct format
+            Float64 oldRate = 48000.0;
+            UInt32 rsz = sizeof(oldRate);
+            AudioObjectGetPropertyData(old_device, &rateProp, 0, nullptr, &rsz, &oldRate);
+            device_capture_rate_.store((int)oldRate, std::memory_order_release);
+            fmt.mSampleRate = (int)oldRate;
+            AudioUnitSetProperty(capture_unit_, kAudioUnitProperty_StreamFormat,
+                                 kAudioUnitScope_Output, 1, &fmt, sizeof(fmt));
+            AudioUnitInitialize(capture_unit_);
+            if (was_running) AudioOutputUnitStart(capture_unit_);
+        }
+        return false;
+    }
+
+    current_input_device_.store(new_device, std::memory_order_release);
+
+    if (was_running) {
+        AudioOutputUnitStart(capture_unit_);
+    }
+
+    LOG_DEBUG("Audio", "Rebound capture to device %u (rate: %dHz)",
+              new_device, device_capture_rate_.load(std::memory_order_relaxed));
+    return true;
+}
+
 bool AudioIO::init_core_audio() {
     OSStatus status;
 
@@ -336,8 +429,14 @@ bool AudioIO::init_core_audio() {
     AudioUnitSetProperty(capture_unit_, kAudioOutputUnitProperty_EnableIO,
                          kAudioUnitScope_Output, 0, &disableIO, sizeof(disableIO));
 
-    // Look up the default input device and explicitly bind it to the capture unit.
-    // HALOutput does not automatically route from the default input device.
+    // Set capture callback before device binding (rebind calls AudioUnitInitialize)
+    AURenderCallbackStruct cb = {};
+    cb.inputProc = capture_callback;
+    cb.inputProcRefCon = this;
+    AudioUnitSetProperty(capture_unit_, kAudioOutputUnitProperty_SetInputCallback,
+                         kAudioUnitScope_Global, 0, &cb, sizeof(cb));
+
+    // Look up the default input device and bind it
     AudioObjectPropertyAddress devProp;
     devProp.mSelector = kAudioHardwarePropertyDefaultInputDevice;
     devProp.mScope    = kAudioObjectPropertyScopeGlobal;
@@ -346,48 +445,8 @@ bool AudioIO::init_core_audio() {
     UInt32 devSz = sizeof(inputDevId);
     AudioObjectGetPropertyData(kAudioObjectSystemObject, &devProp, 0, nullptr, &devSz, &inputDevId);
 
-    status = AudioUnitSetProperty(capture_unit_, kAudioOutputUnitProperty_CurrentDevice,
-                         kAudioUnitScope_Global, 0, &inputDevId, sizeof(inputDevId));
-    if (status != noErr) {
-        LOG_ERROR("Audio", "Failed to set input device %u: %d", inputDevId, (int)status);
-    }
-
-    Float64 deviceRate = 48000.0;
-    devProp.mSelector = kAudioDevicePropertyNominalSampleRate;
-    devProp.mScope    = kAudioObjectPropertyScopeInput;
-    devSz = sizeof(deviceRate);
-    AudioObjectGetPropertyData(inputDevId, &devProp, 0, nullptr, &devSz, &deviceRate);
-
-    device_capture_rate_ = (int)deviceRate;
-    int hw_rate = device_capture_rate_;
-    LOG_DEBUG("Audio", "Input device: %u, native rate: %dHz, target: %dHz",
-            inputDevId, hw_rate, config_.capture_rate);
-
-    AudioStreamBasicDescription fmt = {};
-    fmt.mSampleRate       = hw_rate;
-    fmt.mFormatID         = kAudioFormatLinearPCM;
-    fmt.mFormatFlags      = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
-    fmt.mBitsPerChannel   = 32;
-    fmt.mChannelsPerFrame = 1;
-    fmt.mFramesPerPacket  = 1;
-    fmt.mBytesPerFrame    = 4;
-    fmt.mBytesPerPacket   = 4;
-
-    status = AudioUnitSetProperty(capture_unit_, kAudioUnitProperty_StreamFormat,
-                         kAudioUnitScope_Output, 1, &fmt, sizeof(fmt));
-    if (status != noErr) {
-        LOG_ERROR("Audio", "Failed to set capture format: %d", (int)status);
-    }
-
-    AURenderCallbackStruct cb = {};
-    cb.inputProc = capture_callback;
-    cb.inputProcRefCon = this;
-    AudioUnitSetProperty(capture_unit_, kAudioOutputUnitProperty_SetInputCallback,
-                         kAudioUnitScope_Global, 0, &cb, sizeof(cb));
-
-    status = AudioUnitInitialize(capture_unit_);
-    if (status != noErr) {
-        LOG_ERROR("Audio", "Failed to initialize capture unit: %d", (int)status);
+    if (!rebind_capture_device(inputDevId)) {
+        LOG_ERROR("Audio", "Failed initial capture device binding");
         return false;
     }
 
@@ -400,7 +459,15 @@ bool AudioIO::init_core_audio() {
     AudioComponent play_comp = AudioComponentFindNext(nullptr, &play_desc);
     AudioComponentInstanceNew(play_comp, &playback_unit_);
 
-    fmt.mSampleRate = config_.playback_rate;
+    AudioStreamBasicDescription fmt = {};
+    fmt.mSampleRate       = config_.playback_rate;
+    fmt.mFormatID         = kAudioFormatLinearPCM;
+    fmt.mFormatFlags      = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
+    fmt.mBitsPerChannel   = 32;
+    fmt.mChannelsPerFrame = 1;
+    fmt.mFramesPerPacket  = 1;
+    fmt.mBytesPerFrame    = 4;
+    fmt.mBytesPerPacket   = 4;
     AudioUnitSetProperty(playback_unit_, kAudioUnitProperty_StreamFormat,
                          kAudioUnitScope_Input, 0, &fmt, sizeof(fmt));
 
@@ -413,7 +480,7 @@ bool AudioIO::init_core_audio() {
     AudioUnitInitialize(playback_unit_);
 
     LOG_DEBUG("Audio", "CoreAudio initialized (capture=%dHz->%dHz, playback=%dHz)",
-            device_capture_rate_, config_.capture_rate, config_.playback_rate);
+            device_capture_rate_.load(std::memory_order_relaxed), config_.capture_rate, config_.playback_rate);
     return true;
 }
 

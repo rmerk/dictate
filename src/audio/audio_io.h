@@ -6,6 +6,7 @@
 #include <vector>
 #include <atomic>
 #include <functional>
+#include <memory>
 
 #if defined(__APPLE__) && !RASTACK_FILE_AUDIO_ONLY
 #include <AudioToolbox/AudioToolbox.h>
@@ -79,6 +80,18 @@ private:
                                       AudioBufferList* ioData);
     bool init_core_audio();
     void shutdown_core_audio();
+
+    // Hot-swap: track current input device and listen for changes
+    std::atomic<AudioDeviceID> current_input_device_{0};
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
+
+    static OSStatus device_changed_callback(
+        AudioObjectID inObjectID,
+        UInt32 inNumberAddresses,
+        const AudioObjectPropertyAddress inAddresses[],
+        void* inClientData);
+
+    bool rebind_capture_device(AudioDeviceID new_device);
 #endif
 
     AudioConfig         config_;
@@ -88,7 +101,7 @@ private:
     std::atomic<float>  current_rms_{0.0f};
     std::atomic<bool>   playback_active_{false};   // true when speaker outputting audio
     std::atomic<float>  playback_rms_{0.0f};       // RMS of current playback output
-    int                 device_capture_rate_ = 0;  // actual hardware sample rate
+    std::atomic<int>    device_capture_rate_{0};   // actual hardware sample rate
     std::vector<float>  resample_buf_;             // scratch for downsampling
 };
 
