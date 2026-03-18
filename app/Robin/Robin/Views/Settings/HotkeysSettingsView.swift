@@ -3,7 +3,7 @@ import SwiftUI
 struct HotkeysSettingsView: View {
     @Environment(HotkeyService.self) private var hotkey
     @Environment(\.hotkeySetup) private var hotkeySetup
-    @AppStorage("hotkeyRoutingMode") private var routingModeRaw = "auto"
+    @AppStorage("hotkeyRoutingMode") private var routingModeRaw = "manual"
 
     private var isAutoRouting: Bool { routingModeRaw == "auto" }
 

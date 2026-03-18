@@ -70,8 +70,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
                         // Read live value at fire time — @AppStorage key matches HotkeysSettingsView
                         let routingMode = HotkeyRoutingMode(
-                            rawValue: UserDefaults.standard.string(forKey: "hotkeyRoutingMode") ?? "auto"
-                        ) ?? .auto
+                            rawValue: UserDefaults.standard.string(forKey: "hotkeyRoutingMode") ?? "manual"
+                        ) ?? .manual
 
                         if routingMode == .auto {
                             let mode = HotkeyRouter.route(text, enabledActionCount: engine.enabledActionCount)
