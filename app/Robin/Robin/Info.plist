@@ -11,7 +11,7 @@
     <key>SUFeedURL</key>
     <string>https://runanywhereai.github.io/rcli/appcast.xml</string>
     <key>SUPublicEDKey</key>
-    <string>PASTE_YOUR_EDDSA_PUBLIC_KEY_HERE</string>
+    <string>OVf9zE+Vab4SDwenyOKUHlT7HvYvdxtmt4xupSlfwUA=</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
 </dict>
