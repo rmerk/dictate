@@ -32,7 +32,7 @@ Both obtained from Apple Developer portal under Certificates, Identifiers & Prof
 **Bundle ID:** Change from `ClearStack-Dev.Robin` to `ai.runanywhere.robin` before first public release. This must happen before any signed release ships — changing it later breaks Sparkle update continuity and user preferences.
 
 **Build settings changes in Xcode:**
-- Enable Hardened Runtime (`ENABLE_HARDENED_RUNTIME = YES`) — required for notarization
+- Hardened Runtime (`ENABLE_HARDENED_RUNTIME = YES`) — already enabled in project, required for notarization
 - Existing entitlements (audio-input, apple-events, disable-library-validation) are compatible with Hardened Runtime
 
 **Notarization workflow:**
