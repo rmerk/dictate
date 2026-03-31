@@ -5,8 +5,8 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>RCLI needs microphone access to hear your voice commands and dictation.</string>
+    <string>Robin needs microphone access to hear your voice commands and dictation.</string>
     <key>NSAppleEventsUsageDescription</key>
-    <string>RCLI uses AppleScript to execute actions like creating notes, opening apps, and controlling system settings.</string>
+    <string>Robin uses AppleScript to execute actions like creating notes, opening apps, and controlling system settings.</string>
 </dict>
 </plist>
