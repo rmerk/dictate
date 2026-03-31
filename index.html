@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robin — Private, Local AI Assistant for macOS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+            color: #1d1d1f;
+            background: #fbfbfd;
+            text-align: center;
+            padding: 80px 20px;
+        }
+        .container { max-width: 640px; margin: 0 auto; }
+        h1 { font-size: 48px; font-weight: 700; margin-bottom: 12px; }
+        .subtitle { font-size: 21px; color: #86868b; margin-bottom: 40px; }
+        .download-btn {
+            display: inline-block;
+            background: #0071e3;
+            color: white;
+            font-size: 17px;
+            font-weight: 500;
+            padding: 12px 32px;
+            border-radius: 980px;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        .download-btn:hover { background: #0077ed; }
+        .requirements {
+            margin-top: 16px;
+            font-size: 14px;
+            color: #86868b;
+        }
+        .features {
+            display: flex;
+            gap: 32px;
+            justify-content: center;
+            margin: 60px 0;
+        }
+        .feature {
+            flex: 1;
+            max-width: 180px;
+        }
+        .feature-icon { font-size: 32px; margin-bottom: 8px; }
+        .feature h3 { font-size: 16px; margin-bottom: 4px; }
+        .feature p { font-size: 14px; color: #86868b; }
+        footer {
+            margin-top: 80px;
+            font-size: 14px;
+            color: #86868b;
+        }
+        footer a { color: #0071e3; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Robin</h1>
+        <p class="subtitle">Private, Local AI Assistant for macOS</p>
+
+        <a href="https://github.com/RunanywhereAI/rcli/releases/latest" class="download-btn">
+            Download for Mac
+        </a>
+        <p class="requirements">Requires macOS 13+ and Apple Silicon (M1 or later)</p>
+
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">🎤</div>
+                <h3>Voice Commands</h3>
+                <p>Control your Mac hands-free with natural speech</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">✏️</div>
+                <h3>Dictation</h3>
+                <p>Type anywhere with your voice, faster than keyboard</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🔒</div>
+                <h3>100% Private</h3>
+                <p>All AI runs locally on your Mac. Nothing leaves your device</p>
+            </div>
+        </div>
+
+        <footer>
+            <a href="https://github.com/RunanywhereAI/rcli">GitHub</a>
+        </footer>
+    </div>
+</body>
+</html>
