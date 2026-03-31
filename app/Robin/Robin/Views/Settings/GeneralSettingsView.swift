@@ -1,11 +1,18 @@
 import SwiftUI
 import ServiceManagement
+import Sparkle
 
 struct GeneralSettingsView: View {
+    private let updater: SPUUpdater?
     @Environment(EngineService.self) private var engine
     @AppStorage("appearance") private var appearanceRaw = "system"
     @State private var launchAtLogin = false
     @State private var selectedPersonality = "default"
+
+    init(updater: SPUUpdater?) {
+        self.updater = updater
+    }
+
     var body: some View {
         Form {
             Section("Appearance") {
@@ -43,6 +50,13 @@ struct GeneralSettingsView: View {
                 .onChange(of: selectedPersonality) { _, newValue in
                     try? engine.setPersonality(newValue)
                 }
+            }
+
+            Section("Updates") {
+                Button("Check for Updates...") {
+                    updater?.checkForUpdates()
+                }
+                .disabled(updater == nil)
             }
 
         }

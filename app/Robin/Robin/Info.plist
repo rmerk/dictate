@@ -8,5 +8,11 @@
     <string>Robin needs microphone access to hear your voice commands and dictation.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>Robin uses AppleScript to execute actions like creating notes, opening apps, and controlling system settings.</string>
+    <key>SUFeedURL</key>
+    <string>https://runanywhereai.github.io/rcli/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>PASTE_YOUR_EDDSA_PUBLIC_KEY_HERE</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
 </dict>
 </plist>

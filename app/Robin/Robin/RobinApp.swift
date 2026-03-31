@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import CRCLIEngine
+import Sparkle
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     let engine = EngineService()
@@ -9,6 +10,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let permissions = PermissionService()
     let downloads = ModelDownloadService()
     let conversation = ConversationStore()
+    let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task { await startApp() }
@@ -202,15 +204,28 @@ enum SettingsWindowCoordinator {
         case settings
     }
 
+    typealias ActivationPolicySetter = @MainActor (NSApplication.ActivationPolicy) -> Void
+    typealias AppActivator = @MainActor (Bool) -> Void
+
     @MainActor private static var regularPresentationReasons: Set<RegularPresentationReason> = []
+
+    @MainActor
+    private static func defaultSetActivationPolicy(_ policy: NSApplication.ActivationPolicy) {
+        NSApp.setActivationPolicy(policy)
+    }
+
+    @MainActor
+    private static func defaultActivate(ignoringOtherApps: Bool) {
+        NSApp.activate(ignoringOtherApps: ignoringOtherApps)
+    }
 
     /// Tracks a regular-window flow and promotes the menu bar app only when the
     /// first such window is about to be shown.
     @MainActor
     private static func beginRegularPresentation(
         for reason: RegularPresentationReason,
-        setActivationPolicy: (NSApplication.ActivationPolicy) -> Void,
-        activate: (Bool) -> Void
+        setActivationPolicy: ActivationPolicySetter,
+        activate: AppActivator
     ) {
         regularPresentationReasons.insert(reason)
         if regularPresentationReasons.count == 1 {
@@ -224,7 +239,7 @@ enum SettingsWindowCoordinator {
     @MainActor
     private static func endRegularPresentation(
         for reason: RegularPresentationReason,
-        setActivationPolicy: (NSApplication.ActivationPolicy) -> Void
+        setActivationPolicy: ActivationPolicySetter
     ) {
         guard regularPresentationReasons.remove(reason) != nil else { return }
         guard regularPresentationReasons.isEmpty else { return }
@@ -235,14 +250,14 @@ enum SettingsWindowCoordinator {
     /// macOS can reliably bring the window in front of other apps.
     @MainActor
     static func presentSettings(
-        setActivationPolicy: (NSApplication.ActivationPolicy) -> Void = { NSApp.setActivationPolicy($0) },
-        activate: (Bool) -> Void = { NSApp.activate(ignoringOtherApps: $0) },
+        setActivationPolicy: ActivationPolicySetter? = nil,
+        activate: AppActivator? = nil,
         openSettings: () -> Void
     ) {
         beginRegularPresentation(
             for: .settings,
-            setActivationPolicy: setActivationPolicy,
-            activate: activate
+            setActivationPolicy: setActivationPolicy ?? defaultSetActivationPolicy,
+            activate: activate ?? defaultActivate(ignoringOtherApps:)
         )
         openSettings()
     }
@@ -250,30 +265,36 @@ enum SettingsWindowCoordinator {
     /// Promotes the app while onboarding is visible.
     @MainActor
     static func beginOnboardingPresentation(
-        setActivationPolicy: (NSApplication.ActivationPolicy) -> Void = { NSApp.setActivationPolicy($0) },
-        activate: (Bool) -> Void = { NSApp.activate(ignoringOtherApps: $0) }
+        setActivationPolicy: ActivationPolicySetter? = nil,
+        activate: AppActivator? = nil
     ) {
         beginRegularPresentation(
             for: .onboarding,
-            setActivationPolicy: setActivationPolicy,
-            activate: activate
+            setActivationPolicy: setActivationPolicy ?? defaultSetActivationPolicy,
+            activate: activate ?? defaultActivate(ignoringOtherApps:)
         )
     }
 
     /// Restores the menu bar presentation after the Settings window closes.
     @MainActor
     static func restoreMenuBarMode(
-        setActivationPolicy: (NSApplication.ActivationPolicy) -> Void = { NSApp.setActivationPolicy($0) }
+        setActivationPolicy: ActivationPolicySetter? = nil
     ) {
-        endRegularPresentation(for: .settings, setActivationPolicy: setActivationPolicy)
+        endRegularPresentation(
+            for: .settings,
+            setActivationPolicy: setActivationPolicy ?? defaultSetActivationPolicy
+        )
     }
 
     /// Releases the onboarding presentation state after the welcome flow ends.
     @MainActor
     static func endOnboardingPresentation(
-        setActivationPolicy: (NSApplication.ActivationPolicy) -> Void = { NSApp.setActivationPolicy($0) }
+        setActivationPolicy: ActivationPolicySetter? = nil
     ) {
-        endRegularPresentation(for: .onboarding, setActivationPolicy: setActivationPolicy)
+        endRegularPresentation(
+            for: .onboarding,
+            setActivationPolicy: setActivationPolicy ?? defaultSetActivationPolicy
+        )
     }
 
     /// Returns true when the notification belongs to the shared Settings window.
@@ -292,6 +313,17 @@ enum SettingsWindowCoordinator {
     static func refocusSettingsWindow(_ window: NSWindow) {
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+    }
+}
+
+private struct UpdaterKey: EnvironmentKey {
+    static let defaultValue: SPUUpdater? = nil
+}
+
+extension EnvironmentValues {
+    var updater: SPUUpdater? {
+        get { self[UpdaterKey.self] }
+        set { self[UpdaterKey.self] = newValue }
     }
 }
 
@@ -357,6 +389,7 @@ struct RobinApp: App {
                 .environment(appDelegate.permissions)
                 .environment(appDelegate.downloads)
                 .environment(\.hotkeySetup, { appDelegate.setupHotkey() })
+                .environment(\.updater, appDelegate.updaterController.updater)
                 .preferredColorScheme(preferredColorScheme)
         }
     }

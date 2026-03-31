@@ -1,10 +1,13 @@
 import SwiftUI
 import AppKit
+import Sparkle
 
 struct SettingsView: View {
+    @Environment(\.updater) private var updater
+
     var body: some View {
         TabView {
-            GeneralSettingsView()
+            GeneralSettingsView(updater: updater)
                 .tabItem { Label("General", systemImage: "gear") }
             ModelsSettingsView()
                 .tabItem { Label("Models", systemImage: "cpu") }
