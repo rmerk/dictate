@@ -9,7 +9,7 @@
     <key>NSAppleEventsUsageDescription</key>
     <string>Robin uses AppleScript to execute actions like creating notes, opening apps, and controlling system settings.</string>
     <key>SUFeedURL</key>
-    <string>https://runanywhereai.github.io/rcli/appcast.xml</string>
+    <string>https://rmerk.github.io/dictate/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>OVf9zE+Vab4SDwenyOKUHlT7HvYvdxtmt4xupSlfwUA=</string>
     <key>SUEnableAutomaticChecks</key>
