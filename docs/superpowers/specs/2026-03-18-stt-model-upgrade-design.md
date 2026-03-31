@@ -1,221 +1,285 @@
 # STT Model Upgrade Design
 
 **Date:** 2026-03-18
-**Status:** Draft
+**Status:** Draft v3
 
 ## Goals
 
-Upgrade the entire STT pipeline — both streaming (live TUI) and offline (dictation/listen mode) — to use the best available open-source models in 2026. Prioritize accuracy over latency over simplicity. Per-model size cap: 3 GB.
+Ship the STT upgrade for this branch with a reduced scope:
+
+- keep `Zipformer` as the only supported streaming STT backend
+- expand and improve offline STT model selection
+- split API, CLI, TUI, and info surfaces into explicit streaming vs offline concepts
+- preserve dictation behavior when offline STT is unavailable by hardening the existing Zipformer fallback
+
+This branch does not implement Moonshine streaming selection or native Moonshine integration.
 
 ## Constraints
 
 - English primary, multilingual nice-to-have
-- Open to a second inference backend (Moonshine native C++) if it doesn't require massive refactors
-- Must preserve existing model support for backward compatibility
+- Preserve existing model support for backward compatibility
+- Prefer the lowest-risk integration path first
+- Do not widen the runtime or dependency surface for unproven streaming backends in this branch
+- Per-model size cap: 3 GB
 
-## Model Lineup
+## Supported Model Lineup In This Branch
 
 | Slot | Model | Runtime | Size | Role |
 |------|-------|---------|------|------|
-| Streaming default | Moonshine v2 Small | Moonshine native C++ | ~150 MB | Live TUI mode |
-| Streaming lightweight | Moonshine v2 Tiny | Moonshine native C++ | ~60 MB | Optional, low footprint |
-| Streaming fallback | Zipformer 20M | sherpa-onnx (existing) | 50 MB | Downloadable fallback via `rcli models` |
-| Offline bundled | Whisper base.en | sherpa-onnx (existing) | 140 MB | Ships with setup |
-| Offline upgrade | Distil-Whisper large-v3.5 | sherpa-onnx | ~750 MB | Optional mid-tier |
-| Offline premium | Parakeet TDT 1.1B | sherpa-onnx | ~1.2 GB | Optional, best accuracy |
-| Offline existing | Parakeet TDT 0.6B | sherpa-onnx (existing) | 640 MB | Kept for existing users |
+| Streaming fixed | Zipformer 20M | sherpa-onnx (existing) | 50 MB | Only live/streaming STT backend in this branch |
+| Offline bundled | Whisper base.en | sherpa-onnx (existing) | 140 MB | Existing default offline setup |
+| Offline upgrade | Distil-Whisper large-v3.5 | sherpa-onnx | ~750 MB | Mid-tier offline upgrade |
+| Offline premium | Parakeet TDT 1.1B | sherpa-onnx | ~1.2 GB | Best offline accuracy target |
+| Offline existing | Parakeet TDT 0.6B | sherpa-onnx (existing) | 640 MB | Keep for existing users |
 
-Default setup bundles: Moonshine v2 Small + Whisper base.en (~290 MB).
+Default setup for this branch remains `Zipformer + Whisper base.en`, with optional offline upgrades layered on top.
+
+## Deferred Streaming Follow-Up
+
+Moonshine streaming is explicitly deferred. It may be revisited only after one of these is true:
+
+1. `sherpa-onnx` exposes a validated streaming integration surface that fits this project cleanly.
+2. A separate spike proves a simulated-streaming or native-runtime approach is worth the added ownership cost.
+
+Until then, the code and UX in this branch must not imply that Moonshine is selectable or supported for streaming use.
+
+## Current-State Reality Check
+
+- `SttEngine` is directly coupled to sherpa-onnx online recognizer APIs today.
+- `rcli_init()` and `rcli_init_stt_only()` both hardcode Zipformer model paths for streaming STT.
+- `resolve_active_stt()` and `stt_model=` already exist for offline STT selection.
+- The CLI currently collapses STT reporting into a mix of fixed streaming assumptions and offline-only selection.
+- `Orchestrator` already relies on streaming STT as the fallback path when offline STT is unavailable in some flows, but dictation fallback is weaker than the file/stream fallback flow.
+
+These facts mean the lowest-risk branch is:
+
+- keep streaming fixed to Zipformer
+- improve offline model coverage
+- clarify surfaces that currently blur streaming and offline STT together
+- strengthen the existing Zipformer fallback instead of replacing it
 
 ## Architecture
 
-### Streaming STT — Two Concrete Classes (No Virtual Interface)
+### Streaming STT
 
-The current `SttEngine` class is tightly coupled to sherpa-onnx's `OnlineRecognizer`. Rather than introducing a virtual `IStreamingStt` interface (which adds vtable overhead on a hot path called thousands of times per second), we use two concrete classes:
+Streaming STT stays fixed to Zipformer in this branch.
 
-- `SttEngine` — existing Zipformer/sherpa-onnx implementation, unchanged
-- `MoonshineStt` — new class wrapping Moonshine's native C++ runtime
+That means:
 
-Both expose the same method signatures: `init()`, `feed_audio()`, `process_tick()`, `get_result()`, `has_result()`, `reset()`. No inheritance, no virtual dispatch.
+- `rcli_init()` continues to initialize Zipformer streaming STT
+- `rcli_init_stt_only()` continues to initialize Zipformer streaming STT because dictation may still need fallback decoding
+- `Orchestrator` continues to treat streaming STT as the live mic path
+- no new streaming model resolver or `streaming_model=` config key is introduced in this branch
 
-**Namespace:** `MoonshineStt` goes in `namespace rastack` alongside the existing `SttEngine`. The `rastack`/`rcli` namespace split is pre-existing tech debt — unifying it is out of scope for this work.
+The implementation work here is not backend selection. It is making the fixed streaming layer easier to reason about and reporting it clearly.
 
-**Orchestrator integration:** The orchestrator holds both as members with an enum guard:
+### Offline STT
 
-```cpp
-enum class StreamingSttBackend { ZIPFORMER, MOONSHINE };
+Offline STT remains the main upgrade surface.
 
-// In Orchestrator:
-SttEngine        stt_;                      // existing Zipformer
-#if RCLI_ENABLE_MOONSHINE
-MoonshineStt     moonshine_stt_;            // new — compiled out when disabled
-#endif
-StreamingSttBackend active_streaming_ = StreamingSttBackend::ZIPFORMER;
-```
+`OfflineSttEngine` already supports the relevant backend families:
 
-All existing `stt_.feed_audio()` / `stt_.process_tick()` / `stt_.get_result()` call sites get wrapped in a helper or guarded by `active_streaming_`. This is ~10 call sites in orchestrator.cpp. Chosen over `std::variant` (awkward visit syntax) and `unique_ptr` (unnecessary heap allocation for a member that lives for the process lifetime).
+- Distil-Whisper large-v3.5 fits `OfflineSttBackend::WHISPER`
+- Parakeet TDT 1.1B fits `OfflineSttBackend::NEMO_TRANSDUCER`
 
-**Lazy init:** Only the selected streaming backend is initialized. If `active_streaming_ == MOONSHINE`, Zipformer is not loaded (and vice versa). Users who prefer Zipformer pay zero cost for Moonshine being compiled in.
+This branch should focus on:
 
-**Buffering note:** Moonshine v2 uses sliding-window attention with a fixed window size (~3 seconds / ~48000 samples at 16kHz — confirm exact value from Moonshine docs during implementation). Unlike Zipformer which expects continuous small chunks (~10ms), `MoonshineStt` must handle chunk-by-chunk feeding internally — buffering up to the window size and running inference when it has enough. The orchestrator should not need to know about this difference.
+- adding offline registry entries
+- keeping offline auto-detect and pinned selection behavior clear
+- making setup/download flows aware of the expanded offline lineup
 
-### Offline STT — Registry Extension Only
+### Runtime And API State
 
-`OfflineSttEngine` already supports Whisper and NeMo transducer backends via `OfflineSttBackend` enum. Adding Distil-Whisper and Parakeet TDT 1.1B requires only new registry entries — they use the same backends:
+Even though streaming stays fixed to Zipformer, the runtime should report streaming and offline STT separately.
 
-- Distil-Whisper large-v3.5 → `OfflineSttBackend::WHISPER`
-- Parakeet TDT 1.1B → `OfflineSttBackend::NEMO_TRANSDUCER`
+The API cleanup should split three concerns that are currently easy to conflate:
 
-### Model Registry Changes
+- selected streaming STT model
+- selected offline STT model
+- last STT backend actually used for transcription
 
-Add `runtime` field to `SttModelDef`:
+Target reporting shape:
 
-```cpp
-std::string runtime;  // "sherpa-onnx" or "moonshine"
-```
+- `rcli_get_selected_streaming_stt_model()` returns `zipformer` in this branch
+- `rcli_get_selected_offline_stt_model()` returns the resolved offline model ID
+- `rcli_get_last_stt_backend_used()` reports whether the last transcription used the configured offline path or the Zipformer fallback path
 
-Existing entries get `runtime: "sherpa-onnx"`. Moonshine entries get `runtime: "moonshine"`. Init code uses this field to select which streaming class to instantiate.
+This keeps configuration state separate from runtime behavior and avoids overloading a narrow API such as `rcli_is_using_parakeet()`.
 
-Moonshine models use single `.ort` files instead of encoder/decoder/joiner split. Add a `model_file` field to `SttModelDef` for single-file models (Moonshine). The existing `encoder_file`/`decoder_file`/`joiner_file` fields remain for sherpa-onnx models. `is_stt_installed()` checks `model_file` when non-empty, otherwise `encoder_file`.
+### CLI / TUI / Info UX
 
-Add `streaming_model` config key to `~/Library/RCLI/config` (alongside existing `stt_model`):
+The user-facing surfaces should distinguish streaming and offline STT explicitly, even though streaming is fixed.
 
-```
-stt_model=parakeet-tdt        # offline model selection (existing)
-streaming_model=moonshine-v2-small  # streaming model selection (new)
-```
+Target UX:
 
-`resolve_active_streaming()` follows the same pattern as `resolve_active_stt()`: user preference > auto-detect (highest priority installed streaming model) > Zipformer fallback. Exposed in `rcli models` alongside offline model selection.
+- one streaming STT section labeled as fixed to Zipformer in this branch
+- one offline STT section showing the selected or auto-detected offline model
+- info/reporting output that does not compress both concepts into one misleading sentence
+- no copy that implies there is already a second streaming backend to choose from
 
-Lives in `stt_model_registry.h` (namespace `rcli`) alongside the existing offline helpers. Returns a model ID string that the orchestrator maps to `StreamingSttBackend` enum. Add `read_selected_streaming_id()` / `write_selected_streaming_id()` config helpers mirroring the existing `read_selected_stt_id()` / `write_selected_stt_id()`.
+The goal is clearer product surface area, not new streaming configuration.
 
 ## Data Flow
 
 ### Streaming (live TUI mode)
 
-```
-Mic -> RingBuffer -> VAD (Silero) -> MoonshineStt.feed_audio()
-                                          |
-                                    process_tick() -> partial results -> Orchestrator
-                                          |
-                                    endpoint detected -> final text -> LLM
+```text
+Mic -> RingBuffer -> VAD -> ZipformerStt.feed_audio()
+                           |
+                           +-> process_tick()
+                           |
+                           +-> partial/final text -> Orchestrator -> LLM
 ```
 
-Same flow as current Zipformer path. Moonshine v2's sliding-window attention handles long utterances without accumulating latency.
+This remains the current live pipeline shape.
 
 ### Offline (dictation / listen mode)
 
-```
+```text
 Mic -> capture buffer -> stop -> OfflineSttEngine.transcribe(buffer)
-                                        |
-                                 backend selection:
-                                   Whisper / Distil-Whisper / Parakeet
 ```
 
-No change to this flow.
+Offline model selection changes, but the primary flow does not.
 
-### Init-time Selection
+### Dictation Fallback
 
-Both `rcli_init` and `rcli_init_stt_only` must be updated — today `rcli_init_stt_only` (used by the dictation daemon) hardcodes Zipformer paths. Both init paths share the same streaming selection logic:
+Today `stop_capture_and_transcribe()` falls back to streaming STT if offline STT is unavailable, but that fallback is weaker than the existing file/stream fallback flows. It currently does one reset, one feed, one `process_tick()`, and one `get_result()`.
 
-```
+This branch should harden that path by aligning it with the more robust Zipformer decode flow already used elsewhere:
+
+- reset streaming STT
+- feed captured audio
+- feed trailing silence
+- pump `process_tick()` in a bounded loop
+- fetch the final result
+
+The branch should preserve dictation functionality without making offline STT mandatory.
+
+## Model Registry Changes
+
+### Offline Registry
+
+Add new offline entries to `SttModelDef` and keep the existing `resolve_active_stt()` pattern for offline selection.
+
+Target additions:
+
+- `distil-whisper-large-v3.5`
+- `parakeet-tdt-1.1b`
+
+Keep:
+
+- `whisper-base`
+- `parakeet-tdt`
+
+Priority should prefer the intended higher-quality installed offline model while preserving current installs and fallback behavior.
+
+### Streaming Registry
+
+Streaming registry work in this branch should stay minimal.
+
+Keep Zipformer represented accurately in the registry and reporting paths where needed, but do not add active Moonshine entries, `streaming_model=` persistence, or streaming auto-detect policy in this branch.
+
+## Init-Time Behavior
+
+Both init paths should continue to bring up Zipformer streaming STT and a separately resolved offline STT selection.
+
+Target init logic:
+
+```text
 rcli_init / rcli_init_stt_only
-  +-- Streaming: resolve_active_streaming()
-  |     +-- User preference (streaming_model config key)
-  |     +-- Auto-detect (highest priority installed streaming model)
-  |     +-- Fallback: Zipformer
-  +-- Offline: resolve_active_stt() (existing logic, unchanged)
+  +-- Streaming: initialize Zipformer
+  +-- Offline: resolve_active_stt()
 ```
 
-Note: `rcli_init_stt_only` initializes streaming STT even though dictation uses the offline path — the streaming engine is used as a fallback in `stop_capture_and_transcribe()` when no offline model is available.
+Important note: `rcli_init_stt_only()` must still initialize Zipformer because dictation may fall back to streaming decode when offline STT is unavailable.
 
-## Build System & Dependencies
+## Build System And Dependencies
 
-### Moonshine C++ Runtime
+No new streaming runtime or dependency family is part of this branch.
 
-- Clone into `deps/moonshine` (same pattern as `deps/llama.cpp`, `deps/sherpa-onnx`)
-- Add clone step to `scripts/setup.sh`
-- `add_subdirectory(deps/moonshine)` in root CMakeLists.txt
-- Link `moonshine` target to `rcli` target
+That means:
 
-### OnnxRuntime Strategy
+- no `deps/moonshine`
+- no new top-level CMake toggles for alternate streaming runtimes
+- no second ONNX Runtime owner
+- no native-runtime coexistence work in this branch
 
-This is the critical decision gate. Moonshine uses OnnxRuntime internally; sherpa-onnx bundles its own copy. Two copies in one process risks symbol conflicts.
+Any dependency-upgrade or native-runtime exploration belongs to a later follow-up, not this implementation.
 
-**Spike (must be done first):**
-1. Build Moonshine against sherpa-onnx's bundled OnnxRuntime headers and library
-2. Load both a sherpa-onnx model and a Moonshine model in the same process
-3. Verify no crashes or symbol conflicts
+## Model Downloads And Setup
 
-**If spike passes:** Proceed with `deps/moonshine` native integration.
-**If spike fails:** Fall back to Moonshine-via-sherpa-onnx (recently added support). This eliminates the second runtime entirely — `MoonshineStt` becomes another sherpa-onnx backend and the `runtime` field, CMake gating, and separate dep become unnecessary. Simpler, but may sacrifice Moonshine-native optimizations.
+Target model policy for this branch:
 
-### CMake Gating
+- `scripts/download_models.sh` continues to download Zipformer + Whisper base.en by default
+- Distil-Whisper large-v3.5 and Parakeet TDT 1.1B become optional offline upgrades
+- setup and picker flows should describe Zipformer as the streaming default and the offline lineup separately
 
-```cmake
-option(RCLI_ENABLE_MOONSHINE "Enable Moonshine v2 streaming STT" ON)
-```
+This preserves the current streaming installation behavior while still expanding offline choices.
 
-If OFF or Moonshine fails to build, streaming falls back to Zipformer-only. No hard dependency.
+## Error Handling And Fallbacks
 
-### Model Downloads
-
-- `scripts/download_models.sh` updated to pull Moonshine v2 Small (replaces Zipformer in default setup)
-- Zipformer no longer downloaded by default — available via `rcli models`
-- Distil-Whisper, Parakeet 1.1B, Moonshine Tiny available via `rcli models`
-
-## Error Handling & Fallbacks
-
-- **Moonshine init failure:** Log warning, fall back to Zipformer if installed, otherwise error suggesting `rcli models` to download a streaming model
-- **Model download failure:** Retry once, then surface error with URL for manual download. No silent fallback to a different model
-- **ORT version mismatch:** Detected at CMake time, not runtime. Build fails with clear message pointing to `RCLI_ENABLE_MOONSHINE=OFF`
-- **Missing model files:** Extend `is_stt_installed()` to check Moonshine `.ort` files the same way it checks encoder files
+- **Offline selection missing files:** surface a clear error and fall back according to existing offline resolver policy
+- **Offline init failure:** log directly and keep Zipformer fallback available where existing flows already support it
+- **Model download failure:** retry once, then surface a direct error; do not silently swap to a different model
+- **Dictation offline unavailable:** use the hardened Zipformer fallback path rather than failing immediately
 
 ## Testing
 
-### Unit Tests
+### API / Runtime Reporting
 
-- Feed known WAV files through each STT model and assert transcript accuracy using **WER threshold** (< 10% against reference transcript), not exact string matching — different models produce slightly different output
-- Same test structure for both `MoonshineStt` and `SttEngine` (Zipformer) to verify they're interchangeable
+- verify streaming and offline model reporting are separate
+- verify `rcli_get_last_stt_backend_used()` reflects actual runtime behavior
+- verify current Zipformer streaming init behavior remains intact
 
-### Offline Regression Corpus
+### Offline Regression
 
-- Small test corpus (3-5 WAV files with known reference transcripts) in `test/audio/`
-- Runs against every installed offline model in the registry as part of `rcli_test`
-- Catches regressions when adding new models or updating sherpa-onnx
+- feed known WAV files through each supported offline model and assert transcript quality by a tolerant metric rather than exact string equality
+- ensure `resolve_active_stt()` continues to prefer the best installed offline model
+- verify older installs still resolve cleanly
 
-### ORT Compatibility Test
+### Dictation And Fallback Coverage
 
-- Concrete pass/fail test for the OnnxRuntime spike: load both a sherpa-onnx model and a Moonshine model in the same process, run inference on both, verify no crashes or symbol conflicts
+- exercise `rcli_init_stt_only()` with offline STT present
+- exercise `rcli_init_stt_only()` with offline STT unavailable
+- verify the hardened Zipformer fallback still produces text in the offline-unavailable case
 
-### Benchmark
+### CLI / TUI / Info Coverage
 
-- Extend `rcli bench` to include Moonshine streaming and new offline models
-- Compare latency and accuracy against current Zipformer/Whisper/Parakeet baselines
+- verify streaming and offline STT are shown separately
+- verify no surface implies selectable Moonshine streaming in this branch
+- verify setup/download copy matches the actual supported lineup
 
-### Integration (Manual)
+## Migration And Rollback
 
-Smoke test checklist for `rcli listen` and `rcli dictate` with each model:
-1. Start mode, record ~5 seconds of speech, verify transcript appears
-2. Verify overlay states transition correctly (dictation mode)
-3. Verify paste works (dictation mode)
-4. Verify model switching via `rcli models` takes effect on next engine init
+### Existing Users
 
-### Fallback
+- do not remove Zipformer automatically
+- do not change the default streaming bundle in this branch
+- preserve existing offline selection semantics through `stt_model=...`
+- do not break users who only have the old default models installed
 
-- Build with `RCLI_ENABLE_MOONSHINE=OFF`, verify Zipformer-only path works
-- Remove Moonshine model files, verify graceful fallback with clear error message
+### Rollback
 
-## Migration & Rollback
+No new streaming rollback mechanism is required in this branch because streaming remains Zipformer-only.
 
-**Existing users running `setup.sh` again:** Downloads Moonshine v2 Small alongside existing models. Does not remove Zipformer if already present. Streaming auto-detect picks Moonshine (higher priority) unless user has set `streaming_model=zipformer` in config.
+Offline rollback should remain the existing model-selection behavior:
 
-**Rollback to Zipformer:** `rcli models` to select Zipformer as streaming model, or set `streaming_model=zipformer` in config. No rebuild required. Zipformer stays downloadable via `rcli models`.
+- switch offline selection back through `rcli models`
+- or clear the pinned offline model and fall back to auto-detect
 
-**`rcli_is_using_parakeet()` API:** Deprecate in favor of a new `rcli_get_stt_backend_name()` that returns the active offline model name. The boolean is insufficient with 4 offline backends.
+## Decision Gate
+
+Recommended implementation order:
+
+1. Revise spec and plan language to remove in-branch Moonshine streaming work.
+2. Split runtime and API reporting into streaming, offline, and last-used concepts.
+3. Update CLI, TUI, and info surfaces to present streaming and offline STT separately.
+4. Expand offline registry and setup/download flows.
+5. Harden and test the existing Zipformer dictation fallback.
+6. Revisit Moonshine only in a later dedicated spike or dependency-upgrade branch.
 
 ## Performance Targets
 
-- **Streaming latency:** Partial results within 200ms of speech (Moonshine v2 Small targets ~148ms)
-- **Offline accuracy:** New models must match or beat current Parakeet TDT 0.6B (~1.9% WER on clean audio)
-- **Memory:** Moonshine v2 Small runtime footprint should not increase dictation daemon RSS by more than 150 MB over current Zipformer baseline
+- **Streaming latency:** preserve current Zipformer live responsiveness
+- **Offline accuracy:** new offline options should match or beat current Parakeet TDT 0.6B on the project corpus
+- **Fallback reliability:** dictation should still return text when offline STT is unavailable via the hardened Zipformer path

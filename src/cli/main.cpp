@@ -968,6 +968,15 @@ static int cmd_metalrt(const Args& args) {
 
             std::string hf_base = "https://huggingface.co/" + sel.hf_repo + "/resolve/main/";
             std::string subdir = sel.hf_subdir.empty() ? "" : sel.hf_subdir + "/";
+            std::string config_url = "https://huggingface.co/" +
+                rcli::metalrt_component_repo_for_file(sel, "config.json") +
+                "/resolve/main/" + rcli::metalrt_component_remote_path(sel, "config.json");
+            std::string model_url = "https://huggingface.co/" +
+                rcli::metalrt_component_repo_for_file(sel, "model.safetensors") +
+                "/resolve/main/" + rcli::metalrt_component_remote_path(sel, "model.safetensors");
+            std::string tokenizer_url = "https://huggingface.co/" +
+                rcli::metalrt_component_repo_for_file(sel, "tokenizer.json") +
+                "/resolve/main/" + rcli::metalrt_component_remote_path(sel, "tokenizer.json");
             std::string dl_cmd;
             if (sel.component == "tts") {
                 dl_cmd = "bash -c '"
@@ -983,9 +992,9 @@ static int cmd_metalrt(const Args& args) {
             } else {
                 dl_cmd = "bash -c '"
                     "set -e; mkdir -p \"" + mrt_dir + "\"; "
-                    "curl -fL -# -o \"" + mrt_dir + "/config.json\" \"" + hf_base + subdir + "config.json\"; "
-                    "curl -fL -# -o \"" + mrt_dir + "/model.safetensors\" \"" + hf_base + subdir + "model.safetensors\"; "
-                    "curl -fL -# -o \"" + mrt_dir + "/tokenizer.json\" \"" + hf_base + subdir + "tokenizer.json\"; "
+                    "curl -fL -# -o \"" + mrt_dir + "/config.json\" \"" + config_url + "\"; "
+                    "curl -fL -# -o \"" + mrt_dir + "/model.safetensors\" \"" + model_url + "\"; "
+                    "curl -fL -# -o \"" + mrt_dir + "/tokenizer.json\" \"" + tokenizer_url + "\"; "
                     "'";
             }
 
@@ -1057,6 +1066,15 @@ static int cmd_engine(const Args& args) {
                 std::string cm_dir = rcli::metalrt_models_dir() + "/" + cm.dir_name;
                 std::string hf = "https://huggingface.co/" + cm.hf_repo + "/resolve/main/";
                 std::string sub = cm.hf_subdir.empty() ? "" : cm.hf_subdir + "/";
+                std::string config_url = "https://huggingface.co/" +
+                    rcli::metalrt_component_repo_for_file(cm, "config.json") +
+                    "/resolve/main/" + rcli::metalrt_component_remote_path(cm, "config.json");
+                std::string model_url = "https://huggingface.co/" +
+                    rcli::metalrt_component_repo_for_file(cm, "model.safetensors") +
+                    "/resolve/main/" + rcli::metalrt_component_remote_path(cm, "model.safetensors");
+                std::string tokenizer_url = "https://huggingface.co/" +
+                    rcli::metalrt_component_repo_for_file(cm, "tokenizer.json") +
+                    "/resolve/main/" + rcli::metalrt_component_remote_path(cm, "tokenizer.json");
                 if (cm.component == "tts") {
                     std::string dl = "bash -c 'set -e; mkdir -p \"" + cm_dir + "/voices\"; "
                         "curl -fL -# -o \"" + cm_dir + "/config.json\" \"" + hf + sub + "config.json\"; "
@@ -1069,9 +1087,9 @@ static int cmd_engine(const Args& args) {
                         fprintf(stderr, "  %s%s download failed.%s\n", color::yellow, label.c_str(), color::reset);
                 } else {
                     std::string dl = "bash -c 'set -e; mkdir -p \"" + cm_dir + "\"; "
-                        "curl -fL -# -o \"" + cm_dir + "/config.json\" \"" + hf + sub + "config.json\"; "
-                        "curl -fL -# -o \"" + cm_dir + "/model.safetensors\" \"" + hf + sub + "model.safetensors\"; "
-                        "curl -fL -# -o \"" + cm_dir + "/tokenizer.json\" \"" + hf + sub + "tokenizer.json\"; '";
+                        "curl -fL -# -o \"" + cm_dir + "/config.json\" \"" + config_url + "\"; "
+                        "curl -fL -# -o \"" + cm_dir + "/model.safetensors\" \"" + model_url + "\"; "
+                        "curl -fL -# -o \"" + cm_dir + "/tokenizer.json\" \"" + tokenizer_url + "\"; '";
                     if (system(dl.c_str()) != 0)
                         fprintf(stderr, "  %s%s download failed.%s\n", color::yellow, label.c_str(), color::reset);
                 }

@@ -38,12 +38,19 @@ struct PanelView: View {
             Text("RCLI")
                 .font(.headline)
             Spacer()
-            Text(engine.activeModel)
-                .font(.caption)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.quaternary)
-                .cornerRadius(4)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(engine.primaryStatusModelLine)
+                    .font(.caption)
+                if let secondaryLine = engine.secondaryStatusModelLine {
+                    Text(secondaryLine)
+                        .font(.caption2)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.quaternary)
+            .cornerRadius(4)
+            .multilineTextAlignment(.trailing)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

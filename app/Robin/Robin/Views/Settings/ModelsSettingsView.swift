@@ -77,7 +77,28 @@ enum ModelsSettingsDeletePolicy {
 
 enum ModelsSettingsSectionPolicy {
     static func shouldShowSection(type: ModelType, isUsingMetalRT: Bool) -> Bool {
-        !(type == .stt && isUsingMetalRT)
+        true
+    }
+
+    static func shouldShowMetalRTSTTSection(isUsingMetalRT: Bool,
+                                            preferredEngineIsMetalRT: Bool,
+                                            isApplyingMetalRTSelection: Bool,
+                                            hasApplyError: Bool,
+                                            selectedMetalRTSTTModelId: String?,
+                                            downloadedMetalRTSTTModelIDs: Set<String>) -> Bool {
+        if isUsingMetalRT {
+            return true
+        }
+        if preferredEngineIsMetalRT {
+            return true
+        }
+        if isApplyingMetalRTSelection || hasApplyError {
+            return true
+        }
+        if let selectedMetalRTSTTModelId, !selectedMetalRTSTTModelId.isEmpty {
+            return true
+        }
+        return !downloadedMetalRTSTTModelIDs.isEmpty
     }
 }
 
@@ -87,6 +108,18 @@ enum ModelsSettingsCopy {
 
     static func sttSectionTitle(isUsingMetalRT: Bool) -> String {
         isUsingMetalRT ? "Speech Recognition" : "Speech-to-Text"
+    }
+
+    static func offlineSTTSectionTitle(isUsingMetalRT: Bool) -> String {
+        isUsingMetalRT ? "Offline Speech-to-Text" : "Speech-to-Text"
+    }
+
+    static func offlineSTTSelectionNoteText(isUsingMetalRT: Bool) -> String {
+        if isUsingMetalRT {
+            return "Offline models like Parakeet are only used outside MetalRT. Selecting one here saves it for the next non-MetalRT launch."
+        }
+
+        return "Offline STT selection is saved for the next launch."
     }
 
     static func metalRTSTTNoteText(isApplyingSelection: Bool,
@@ -120,7 +153,14 @@ struct ModelsSettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             List {
                 modelSection(type: .llm)
-                if engine.isUsingMetalRT {
+                if ModelsSettingsSectionPolicy.shouldShowMetalRTSTTSection(
+                    isUsingMetalRT: engine.isUsingMetalRT,
+                    preferredEngineIsMetalRT: engine.preferredEngineIsMetalRT,
+                    isApplyingMetalRTSelection: engine.isApplyingMetalRTSTTSelection,
+                    hasApplyError: engine.metalRTSTTApplyErrorMessage != nil,
+                    selectedMetalRTSTTModelId: engine.selectedMetalRTSTTModelId,
+                    downloadedMetalRTSTTModelIDs: downloadedMetalRTSTTModelIDs
+                ) {
                     metalRTSTTSection
                 }
                 if ModelsSettingsSectionPolicy.shouldShowSection(type: .stt, isUsingMetalRT: engine.isUsingMetalRT) {
@@ -162,7 +202,7 @@ struct ModelsSettingsView: View {
             if a.isRecommended != b.isRecommended { return a.isRecommended }
             return false
         }
-        Section(type.displayName) {
+        Section(sectionTitle(for: type)) {
             if type == .stt && !engine.isUsingMetalRT {
                 runtimeSTTStatusRow
             }
@@ -631,11 +671,7 @@ struct ModelsSettingsView: View {
     }
 
     private var sttSelectionNoteText: String {
-        if engine.isUsingMetalRT {
-            return "Offline STT selection below only affects the non-MetalRT engine. Use the MetalRT section above to change the active Whisper model."
-        }
-
-        return "Offline STT selection is saved for the next launch."
+        ModelsSettingsCopy.offlineSTTSelectionNoteText(isUsingMetalRT: engine.isUsingMetalRT)
     }
 
     private var metalRTSTTNoteText: String {
@@ -653,6 +689,15 @@ struct ModelsSettingsView: View {
             if lhsRuntime != rhsRuntime { return lhsRuntime }
             if lhs.isDefault != rhs.isDefault { return lhs.isDefault }
             return lhs.sizeBytes < rhs.sizeBytes
+        }
+    }
+
+    private func sectionTitle(for type: ModelType) -> String {
+        switch type {
+        case .stt:
+            ModelsSettingsCopy.offlineSTTSectionTitle(isUsingMetalRT: engine.isUsingMetalRT)
+        case .llm, .tts:
+            type.displayName
         }
     }
 

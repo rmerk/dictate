@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CA05ADE92F7BE1AA000C8831 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = CA05ADE82F7BE1AA000C8831 /* Sparkle */; };
 		CA8B268A2F694EC200A82B5A /* RCLIEngine.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CA8B26892F694EC200A82B5A /* RCLIEngine.xcframework */; };
 /* End PBXBuildFile section */
 
@@ -58,6 +59,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				CA8B268A2F694EC200A82B5A /* RCLIEngine.xcframework in Frameworks */,
+				CA05ADE92F7BE1AA000C8831 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,12 +73,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		CA05ADE72F7BE1AA000C8831 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		CA8B26562F694EC200A82B5A = {
 			isa = PBXGroup;
 			children = (
 				CA8B26892F694EC200A82B5A /* RCLIEngine.xcframework */,
 				CA8B26612F694EC200A82B5A /* Robin */,
 				CA8B266F2F694EC200A82B5A /* RobinTests */,
+				CA05ADE72F7BE1AA000C8831 /* Frameworks */,
 				CA8B26602F694EC200A82B5A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -110,6 +120,7 @@
 			);
 			name = Robin;
 			packageProductDependencies = (
+				CA05ADE82F7BE1AA000C8831 /* Sparkle */,
 			);
 			productName = Robin;
 			productReference = CA8B265F2F694EC200A82B5A /* Robin.app */;
@@ -146,7 +157,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2630;
-				LastUpgradeCheck = 2630;
+				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					CA8B265E2F694EC200A82B5A = {
 						CreatedOnToolsVersion = 26.3;
@@ -257,6 +268,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = HPNVTN3424;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -282,6 +294,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -321,6 +334,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = HPNVTN3424;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -339,6 +353,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -353,11 +368,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = HPNVTN3424;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = AGK9XPDJ4X;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
+				"EXCLUDED_ARCHS[sdk=macosx*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Robin/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Robin;
@@ -369,7 +386,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreAudio,
@@ -397,7 +414,7 @@
 					Accelerate,
 					"-lstdc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "ai.runanywhere.robin";
+				PRODUCT_BUNDLE_IDENTIFIER = ai.runanywhere.robin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -419,11 +436,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = HPNVTN3424;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = AGK9XPDJ4X;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
+				"EXCLUDED_ARCHS[sdk=macosx*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Robin/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Robin;
@@ -435,7 +454,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreAudio,
@@ -463,7 +482,7 @@
 					Accelerate,
 					"-lstdc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "ai.runanywhere.robin";
+				PRODUCT_BUNDLE_IDENTIFIER = ai.runanywhere.robin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -481,11 +500,12 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = HPNVTN3424;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "ai.runanywhere.robin.tests";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.runanywhere.robin.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -502,11 +522,12 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = HPNVTN3424;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "ai.runanywhere.robin.tests";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.runanywhere.robin.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -559,6 +580,14 @@
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CA05ADE82F7BE1AA000C8831 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CA8B27872F69597300A82B5A /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = CA8B26572F694EC200A82B5A /* Project object */;
 }

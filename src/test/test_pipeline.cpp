@@ -732,18 +732,24 @@ static void test_metalrt_component_manifest() {
     const rcli::MetalRTComponentModel* tiny = nullptr;
     const rcli::MetalRTComponentModel* small = nullptr;
     const rcli::MetalRTComponentModel* medium = nullptr;
+    const rcli::MetalRTComponentModel* large = nullptr;
+    int stt_count = 0;
 
     for (const auto& component : comps) {
+        if (component.component == "stt") ++stt_count;
         if (component.id == "metalrt-whisper-tiny") tiny = &component;
         if (component.id == "metalrt-whisper-small") small = &component;
         if (component.id == "metalrt-whisper-medium") medium = &component;
+        if (component.id == "metalrt-whisper-large-v3") large = &component;
     }
 
+    TEST("MetalRT STT registry exposes four Whisper variants", stt_count == 4);
     TEST("Whisper Tiny registry entry exists", tiny != nullptr);
     TEST("Whisper Small registry entry exists", small != nullptr);
     TEST("Whisper Medium registry entry exists", medium != nullptr);
+    TEST("Whisper Large-v3 registry entry exists", large != nullptr);
 
-    if (!tiny || !small || !medium) return;
+    if (!tiny || !small || !medium || !large) return;
 
     TEST("Whisper Tiny keeps root-level config path",
          rcli::metalrt_component_remote_path(*tiny, "config.json") == "config.json");
@@ -756,6 +762,14 @@ static void test_metalrt_component_manifest() {
     TEST("Whisper Medium resolves model from repo subdirectory",
          rcli::metalrt_component_remote_path(*medium, "model.safetensors") ==
              "whisper-medium-mlx-4bit/model.safetensors");
+    TEST("Whisper Large-v3 keeps root-level config path",
+         rcli::metalrt_component_remote_path(*large, "config.json") == "config.json");
+    TEST("Whisper Large-v3 keeps root-level model path",
+         rcli::metalrt_component_remote_path(*large, "model.safetensors") == "model.safetensors");
+    TEST("Whisper Large-v3 keeps root-level tokenizer path",
+         rcli::metalrt_component_remote_path(*large, "tokenizer.json") == "tokenizer.json");
+    TEST("Whisper Large-v3 tokenizer comes from official Whisper repo",
+         large->tokenizer_hf_repo == "openai/whisper-large-v3");
 }
 
 static void test_metalrt_llm(const std::string& models_dir) {

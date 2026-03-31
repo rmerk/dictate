@@ -72,6 +72,7 @@ struct MetalRTSTTEntry: Identifiable, Equatable, Sendable {
     let sizeBytes: Int64
     let description: String
     let hfRepo: String
+    let tokenizerHFRepo: String?
     let hfSubdirectory: String?
     let localDirectory: String
     let isDefault: Bool
@@ -90,8 +91,28 @@ struct MetalRTSTTEntry: Identifiable, Equatable, Sendable {
 
         return MetalRTModelFile(
             relativePath: relativePath,
-            url: Self.resolveHuggingFaceURL(repo: hfRepo, remotePath: remotePath)
+            url: Self.resolveHuggingFaceURL(
+                repo: remoteRepo(for: relativePath),
+                remotePath: resolvedRemotePath(for: relativePath, defaultRemotePath: remotePath)
+            )
         )
+    }
+
+    private func remoteRepo(for relativePath: String) -> String {
+        tokenizerRepo(for: relativePath) ?? hfRepo
+    }
+
+    private func resolvedRemotePath(for relativePath: String, defaultRemotePath: String) -> String {
+        tokenizerRepo(for: relativePath) == nil ? defaultRemotePath : relativePath
+    }
+
+    private func tokenizerRepo(for relativePath: String) -> String? {
+        guard relativePath == "tokenizer.json",
+              let tokenizerHFRepo,
+              !tokenizerHFRepo.isEmpty else {
+            return nil
+        }
+        return tokenizerHFRepo
     }
 
     private static func resolveHuggingFaceURL(repo: String, remotePath: String) -> URL {

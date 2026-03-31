@@ -19,9 +19,16 @@ struct MenuBarView: View {
                     .font(.headline)
                 Spacer()
                 if case .ready = engine.lifecycleState {
-                    Text(engine.activeModel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(engine.primaryStatusModelLine)
+                            .font(.caption)
+                        if let secondaryLine = engine.secondaryStatusModelLine {
+                            Text(secondaryLine)
+                                .font(.caption2)
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
                 }
             }
 

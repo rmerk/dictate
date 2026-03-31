@@ -29,6 +29,25 @@ enum ModelSelectionResolver {
     }
 }
 
+enum ModelDisplayFormatter {
+    static func primaryStatusLine(activeLLMName: String) -> String {
+        let trimmedName = activeLLMName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedName.isEmpty ? "LLM: Unknown" : "LLM: \(trimmedName)"
+    }
+
+    static func secondaryStatusLine(activeSTTName: String) -> String? {
+        let trimmedName = activeSTTName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return nil }
+        return "Speech: \(trimmedName)"
+    }
+
+    static func statusSummary(activeLLMName: String, activeSTTName: String) -> String {
+        let lines = [primaryStatusLine(activeLLMName: activeLLMName), secondaryStatusLine(activeSTTName: activeSTTName)]
+            .compactMap { $0 }
+        return lines.joined(separator: "\n")
+    }
+}
+
 extension EngineService {
     var activeModelId: String? {
         ModelCatalog.all.first { $0.name == activeModel }?.id
@@ -50,6 +69,14 @@ extension EngineService {
         MetalRTSTTCatalog.entry(runtimeName: activeSTTModel)?.id
     }
 
+    var primaryStatusModelLine: String {
+        ModelDisplayFormatter.primaryStatusLine(activeLLMName: activeModel)
+    }
+
+    var secondaryStatusModelLine: String? {
+        ModelDisplayFormatter.secondaryStatusLine(activeSTTName: activeSTTModel)
+    }
+
     var persistedOfflineSTTModelId: String? {
         let modelID = ConfigService.shared.read(key: "stt_model")
         guard let modelID, !modelID.isEmpty else { return nil }
@@ -64,6 +91,14 @@ extension EngineService {
 
     var isUsingMetalRT: Bool {
         activeEngine.caseInsensitiveCompare("metalrt") == .orderedSame
+    }
+
+    var preferredEngineIsMetalRT: Bool {
+        guard let enginePreference = ConfigService.shared.read(key: "engine"),
+              !enginePreference.isEmpty else {
+            return false
+        }
+        return enginePreference.caseInsensitiveCompare("metalrt") == .orderedSame
     }
 
     func switchModel(_ id: String) async throws {

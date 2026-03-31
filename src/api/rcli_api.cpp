@@ -460,6 +460,9 @@ int rcli_init(RCLIHandle handle, const char* models_dir, int gpu_layers) {
                         std::string cm_dir = rcli::metalrt_models_dir() + "/" + cm.dir_name;
                         std::string hf = "https://huggingface.co/" + cm.hf_repo + "/resolve/main/";
                         std::string sub = cm.hf_subdir.empty() ? "" : cm.hf_subdir + "/";
+                        std::string config_url = rcli::metalrt_component_download_url(cm, "config.json");
+                        std::string model_url = rcli::metalrt_component_download_url(cm, "model.safetensors");
+                        std::string tokenizer_url = rcli::metalrt_component_download_url(cm, "tokenizer.json");
                         if (cm.component == "tts") {
                             std::string dl = "bash -c 'set -e; mkdir -p \"" + cm_dir + "/voices\"; "
                                 "curl -fL -# -o \"" + cm_dir + "/config.json\" \"" + hf + sub + "config.json\"; "
@@ -471,9 +474,9 @@ int rcli_init(RCLIHandle handle, const char* models_dir, int gpu_layers) {
                             system(dl.c_str());
                         } else {
                             std::string dl = "bash -c 'set -e; mkdir -p \"" + cm_dir + "\"; "
-                                "curl -fL -# -o \"" + cm_dir + "/config.json\" \"" + hf + sub + "config.json\"; "
-                                "curl -fL -# -o \"" + cm_dir + "/model.safetensors\" \"" + hf + sub + "model.safetensors\"; "
-                                "curl -fL -# -o \"" + cm_dir + "/tokenizer.json\" \"" + hf + sub + "tokenizer.json\"; '";
+                                "curl -fL -# -o \"" + cm_dir + "/config.json\" \"" + config_url + "\"; "
+                                "curl -fL -# -o \"" + cm_dir + "/model.safetensors\" \"" + model_url + "\"; "
+                                "curl -fL -# -o \"" + cm_dir + "/tokenizer.json\" \"" + tokenizer_url + "\"; '";
                             system(dl.c_str());
                         }
                     }
@@ -541,6 +544,9 @@ int rcli_init(RCLIHandle handle, const char* models_dir, int gpu_layers) {
                             std::string cm_dir = rcli::metalrt_models_dir() + "/" + cm.dir_name;
                             std::string hf = "https://huggingface.co/" + cm.hf_repo + "/resolve/main/";
                             std::string sub = cm.hf_subdir.empty() ? "" : cm.hf_subdir + "/";
+                            std::string config_url = rcli::metalrt_component_download_url(cm, "config.json");
+                            std::string model_url = rcli::metalrt_component_download_url(cm, "model.safetensors");
+                            std::string tokenizer_url = rcli::metalrt_component_download_url(cm, "tokenizer.json");
                             if (cm.component == "tts") {
                                 std::string dl = "bash -c 'set -e; mkdir -p \"" + cm_dir + "/voices\"; "
                                     "curl -fL -# -o \"" + cm_dir + "/config.json\" \"" + hf + sub + "config.json\"; "
@@ -552,9 +558,9 @@ int rcli_init(RCLIHandle handle, const char* models_dir, int gpu_layers) {
                                 system(dl.c_str());
                             } else {
                                 std::string dl = "bash -c 'set -e; mkdir -p \"" + cm_dir + "\"; "
-                                    "curl -fL -# -o \"" + cm_dir + "/config.json\" \"" + hf + sub + "config.json\"; "
-                                    "curl -fL -# -o \"" + cm_dir + "/model.safetensors\" \"" + hf + sub + "model.safetensors\"; "
-                                    "curl -fL -# -o \"" + cm_dir + "/tokenizer.json\" \"" + hf + sub + "tokenizer.json\"; '";
+                                    "curl -fL -# -o \"" + cm_dir + "/config.json\" \"" + config_url + "\"; "
+                                    "curl -fL -# -o \"" + cm_dir + "/model.safetensors\" \"" + model_url + "\"; "
+                                    "curl -fL -# -o \"" + cm_dir + "/tokenizer.json\" \"" + tokenizer_url + "\"; '";
                                 system(dl.c_str());
                             }
                         }

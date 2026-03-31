@@ -293,7 +293,7 @@ struct MetalRTComponentModel {
     std::string dir_name;        // local dir under metalrt_models_dir()
     int         size_mb;
     std::string description;
-    std::string tokenizer_hf_repo;  // Separate repo for tokenizer.json (if not in hf_repo)
+    std::string tokenizer_hf_repo;  // Separate root-level repo for tokenizer.json (if not in hf_repo)
     bool        default_install = true; // downloaded during initial setup; false = on-demand only
 };
 
@@ -336,6 +336,18 @@ inline std::vector<MetalRTComponentModel> metalrt_component_models() {
             false,
         },
         {
+            "metalrt-whisper-large-v3",
+            "Whisper Large-v3 (MLX 4-bit)",
+            "stt",
+            "mlx-community/whisper-large-v3-mlx-4bit",
+            "",
+            "whisper-large-v3-mlx-4bit",
+            973,
+            "Most accurate Whisper model, slowest download and inference",
+            "openai/whisper-large-v3",
+            false,
+        },
+        {
             "metalrt-kokoro-82m",
             "Kokoro 82M (bf16)",
             "tts",
@@ -350,10 +362,33 @@ inline std::vector<MetalRTComponentModel> metalrt_component_models() {
     };
 }
 
+inline bool metalrt_component_uses_external_tokenizer_repo(const MetalRTComponentModel& model,
+                                                           const std::string& filename) {
+    return filename == "tokenizer.json" && !model.tokenizer_hf_repo.empty();
+}
+
+inline std::string metalrt_component_repo_for_file(const MetalRTComponentModel& model,
+                                                   const std::string& filename) {
+    return metalrt_component_uses_external_tokenizer_repo(model, filename)
+        ? model.tokenizer_hf_repo
+        : model.hf_repo;
+}
+
 inline std::string metalrt_component_remote_path(const MetalRTComponentModel& model,
                                                  const std::string& filename) {
+    if (metalrt_component_uses_external_tokenizer_repo(model, filename)) {
+        return filename;
+    }
     if (model.hf_subdir.empty()) return filename;
     return model.hf_subdir + "/" + filename;
+}
+
+inline std::string metalrt_component_download_url(const MetalRTComponentModel& model,
+                                                  const std::string& filename) {
+    return "https://huggingface.co/" +
+           metalrt_component_repo_for_file(model, filename) +
+           "/resolve/main/" +
+           metalrt_component_remote_path(model, filename);
 }
 
 

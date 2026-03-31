@@ -1487,6 +1487,7 @@ private:
                 e.description = cm.description;
                 if (is_beta) e.description += " [GPU beta - not fully optimized yet]";
                 e.url = cm.hf_repo;
+                e.mrt_tokenizer_url = cm.tokenizer_hf_repo;
                 e.hf_subdir = cm.hf_subdir;
                 e.filename = cm.dir_name;
                 e.is_archive = false;
@@ -1506,6 +1507,7 @@ private:
                 e.is_default = false; e.is_recommended = false;
                 e.description = cm.description;
                 e.url = cm.hf_repo;
+                e.mrt_tokenizer_url = cm.tokenizer_hf_repo;
                 e.hf_subdir = cm.hf_subdir;
                 e.filename = cm.dir_name;
                 e.is_archive = false;
@@ -1687,6 +1689,15 @@ private:
                     std::string hf_base = "https://huggingface.co/" + url + "/resolve/main/";
                     std::string sub = models_entries_[idx].hf_subdir;
                     std::string sp = sub.empty() ? "" : sub + "/";
+                    auto metalrt_file_url = [&](const std::string& filename) {
+                        bool uses_external_tokenizer_repo = (filename == "tokenizer.json" && !tok_url.empty());
+                        std::string repo = uses_external_tokenizer_repo ? tok_url : url;
+                        std::string path = uses_external_tokenizer_repo ? filename : sp + filename;
+                        return "https://huggingface.co/" + repo + "/resolve/main/" + path;
+                    };
+                    std::string config_url = metalrt_file_url("config.json");
+                    std::string model_url = metalrt_file_url("model.safetensors");
+                    std::string tokenizer_url = metalrt_file_url("tokenizer.json");
                     std::string dl_cmd;
                     if (mod == "MRT-TTS") {
                         dl_cmd = "bash -c '"
@@ -1702,9 +1713,9 @@ private:
                     } else {
                         dl_cmd = "bash -c '"
                             "set -e; mkdir -p \"" + mrt_dir + "\"; "
-                            "curl -fL -# -o \"" + mrt_dir + "/config.json\" \"" + hf_base + sp + "config.json\"; "
-                            "curl -fL -# -o \"" + mrt_dir + "/model.safetensors\" \"" + hf_base + sp + "model.safetensors\"; "
-                            "curl -fL -# -o \"" + mrt_dir + "/tokenizer.json\" \"" + hf_base + sp + "tokenizer.json\"; "
+                            "curl -fL -# -o \"" + mrt_dir + "/config.json\" \"" + config_url + "\"; "
+                            "curl -fL -# -o \"" + mrt_dir + "/model.safetensors\" \"" + model_url + "\"; "
+                            "curl -fL -# -o \"" + mrt_dir + "/tokenizer.json\" \"" + tokenizer_url + "\"; "
                             "'";
                     }
                     rc = system(dl_cmd.c_str());

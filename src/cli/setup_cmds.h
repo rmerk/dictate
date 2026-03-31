@@ -193,6 +193,9 @@ inline int cmd_setup(const Args& args) {
 
                 std::string hf_base = "https://huggingface.co/" + cm.hf_repo + "/resolve/main/";
                 std::string subdir = cm.hf_subdir.empty() ? "" : cm.hf_subdir + "/";
+                std::string config_url = rcli::metalrt_component_download_url(cm, "config.json");
+                std::string model_url = rcli::metalrt_component_download_url(cm, "model.safetensors");
+                std::string tokenizer_url = rcli::metalrt_component_download_url(cm, "tokenizer.json");
 
                 auto report_dl_failure = [&](const std::string& label, const std::string& dir) {
                     long long free_after = available_disk_mb(dir);
@@ -224,9 +227,9 @@ inline int cmd_setup(const Args& args) {
                 } else {
                     std::string dl_cmd = "bash -c '"
                         "set -e; mkdir -p \"" + cm_dir + "\"; "
-                        "curl -fL -# -o \"" + cm_dir + "/config.json\" \"" + hf_base + subdir + "config.json\"; "
-                        "curl -fL -# -o \"" + cm_dir + "/model.safetensors\" \"" + hf_base + subdir + "model.safetensors\"; "
-                        "curl -fL -# -o \"" + cm_dir + "/tokenizer.json\" \"" + hf_base + subdir + "tokenizer.json\"; "
+                        "curl -fL -# -o \"" + cm_dir + "/config.json\" \"" + config_url + "\"; "
+                        "curl -fL -# -o \"" + cm_dir + "/model.safetensors\" \"" + model_url + "\"; "
+                        "curl -fL -# -o \"" + cm_dir + "/tokenizer.json\" \"" + tokenizer_url + "\"; "
                         "'";
                     if (system(dl_cmd.c_str()) != 0) report_dl_failure(type_label, cm_dir);
                 }

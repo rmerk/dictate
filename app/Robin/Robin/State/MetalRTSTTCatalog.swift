@@ -8,6 +8,7 @@ enum MetalRTSTTCatalog {
             sizeBytes: 40_000_000,
             description: "Fastest transcription, lower accuracy (~10% WER)",
             hfRepo: "runanywhere/whisper_tiny_4bit",
+            tokenizerHFRepo: nil,
             hfSubdirectory: nil,
             localDirectory: "whisper-tiny-mlx-4bit",
             isDefault: true
@@ -18,6 +19,7 @@ enum MetalRTSTTCatalog {
             sizeBytes: 375_000_000,
             description: "Good balance of speed and accuracy (~5% WER)",
             hfRepo: "runanywhere/whisper_small_4bit",
+            tokenizerHFRepo: nil,
             hfSubdirectory: "whisper-small-mlx-4bit",
             localDirectory: "whisper-small-mlx-4bit",
             isDefault: false
@@ -28,8 +30,20 @@ enum MetalRTSTTCatalog {
             sizeBytes: 980_000_000,
             description: "Best accuracy, slower (~3% WER)",
             hfRepo: "runanywhere/whisper_medium_4bit",
+            tokenizerHFRepo: nil,
             hfSubdirectory: "whisper-medium-mlx-4bit",
             localDirectory: "whisper-medium-mlx-4bit",
+            isDefault: false
+        ),
+        MetalRTSTTEntry(
+            id: "metalrt-whisper-large-v3",
+            name: "Whisper Large-v3 (MLX 4-bit)",
+            sizeBytes: 973_124_280,
+            description: "Most accurate Whisper model, slowest download and inference",
+            hfRepo: "mlx-community/whisper-large-v3-mlx-4bit",
+            tokenizerHFRepo: "openai/whisper-large-v3",
+            hfSubdirectory: nil,
+            localDirectory: "whisper-large-v3-mlx-4bit",
             isDefault: false
         ),
     ]

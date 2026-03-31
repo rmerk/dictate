@@ -86,11 +86,12 @@ struct ModelCatalogTests {
         let ids = MetalRTSTTCatalog.all.map(\.id)
         let localDirectories = MetalRTSTTCatalog.all.map(\.localDirectory)
 
-        #expect(MetalRTSTTCatalog.all.count == 3)
+        #expect(MetalRTSTTCatalog.all.count == 4)
         #expect(ids == [
             "metalrt-whisper-tiny",
             "metalrt-whisper-small",
             "metalrt-whisper-medium",
+            "metalrt-whisper-large-v3",
         ])
         #expect(Set(localDirectories).count == localDirectories.count)
     }
@@ -114,7 +115,7 @@ struct ModelCatalogTests {
     }
 
     @Test func metalRTSTTInstallRequiresConfigModelAndTokenizerFiles() throws {
-        let entry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-small"))
+        let entry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-large-v3"))
         let root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let installDirectory = root
@@ -145,10 +146,10 @@ struct ModelCatalogTests {
         let entry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-tiny"))
         assertResolvedFileURLs(
             for: entry,
-            expectedPaths: [
-                "config.json",
-                "model.safetensors",
-                "tokenizer.json",
+            expectedSuffixes: [
+                "runanywhere/whisper_tiny_4bit/resolve/main/config.json",
+                "runanywhere/whisper_tiny_4bit/resolve/main/model.safetensors",
+                "runanywhere/whisper_tiny_4bit/resolve/main/tokenizer.json",
             ]
         )
     }
@@ -157,10 +158,10 @@ struct ModelCatalogTests {
         let entry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-small"))
         assertResolvedFileURLs(
             for: entry,
-            expectedPaths: [
-                "whisper-small-mlx-4bit/config.json",
-                "whisper-small-mlx-4bit/model.safetensors",
-                "whisper-small-mlx-4bit/tokenizer.json",
+            expectedSuffixes: [
+                "runanywhere/whisper_small_4bit/resolve/main/whisper-small-mlx-4bit/config.json",
+                "runanywhere/whisper_small_4bit/resolve/main/whisper-small-mlx-4bit/model.safetensors",
+                "runanywhere/whisper_small_4bit/resolve/main/whisper-small-mlx-4bit/tokenizer.json",
             ]
         )
     }
@@ -169,10 +170,22 @@ struct ModelCatalogTests {
         let entry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-medium"))
         assertResolvedFileURLs(
             for: entry,
-            expectedPaths: [
-                "whisper-medium-mlx-4bit/config.json",
-                "whisper-medium-mlx-4bit/model.safetensors",
-                "whisper-medium-mlx-4bit/tokenizer.json",
+            expectedSuffixes: [
+                "runanywhere/whisper_medium_4bit/resolve/main/whisper-medium-mlx-4bit/config.json",
+                "runanywhere/whisper_medium_4bit/resolve/main/whisper-medium-mlx-4bit/model.safetensors",
+                "runanywhere/whisper_medium_4bit/resolve/main/whisper-medium-mlx-4bit/tokenizer.json",
+            ]
+        )
+    }
+
+    @Test func metalRTWhisperLargeV3ResolvesWeightsAndTokenizerFromValidatedRepos() throws {
+        let entry = try #require(MetalRTSTTCatalog.entry(id: "metalrt-whisper-large-v3"))
+        assertResolvedFileURLs(
+            for: entry,
+            expectedSuffixes: [
+                "mlx-community/whisper-large-v3-mlx-4bit/resolve/main/config.json",
+                "mlx-community/whisper-large-v3-mlx-4bit/resolve/main/model.safetensors",
+                "openai/whisper-large-v3/resolve/main/tokenizer.json",
             ]
         )
     }
@@ -266,11 +279,74 @@ struct ModelCatalogTests {
         #expect(ModelsSettingsDeletePolicy.canDelete(isInstalled: true, isProtected: false))
     }
 
-    @Test func metalRTHidesStandardSTTSection() {
-        #expect(!ModelsSettingsSectionPolicy.shouldShowSection(type: .stt, isUsingMetalRT: true))
+    @Test func metalRTStillShowsOfflineSTTSection() {
+        #expect(ModelsSettingsSectionPolicy.shouldShowSection(type: .stt, isUsingMetalRT: true))
         #expect(ModelsSettingsSectionPolicy.shouldShowSection(type: .stt, isUsingMetalRT: false))
         #expect(ModelsSettingsSectionPolicy.shouldShowSection(type: .llm, isUsingMetalRT: true))
         #expect(ModelsSettingsSectionPolicy.shouldShowSection(type: .tts, isUsingMetalRT: true))
+    }
+
+    @Test func metalRTSectionStaysVisibleDuringApplyAndErrorRecovery() {
+        #expect(
+            ModelsSettingsSectionPolicy.shouldShowMetalRTSTTSection(
+                isUsingMetalRT: true,
+                preferredEngineIsMetalRT: true,
+                isApplyingMetalRTSelection: false,
+                hasApplyError: false,
+                selectedMetalRTSTTModelId: nil,
+                downloadedMetalRTSTTModelIDs: []
+            )
+        )
+        #expect(
+            ModelsSettingsSectionPolicy.shouldShowMetalRTSTTSection(
+                isUsingMetalRT: false,
+                preferredEngineIsMetalRT: true,
+                isApplyingMetalRTSelection: true,
+                hasApplyError: false,
+                selectedMetalRTSTTModelId: nil,
+                downloadedMetalRTSTTModelIDs: []
+            )
+        )
+        #expect(
+            ModelsSettingsSectionPolicy.shouldShowMetalRTSTTSection(
+                isUsingMetalRT: false,
+                preferredEngineIsMetalRT: true,
+                isApplyingMetalRTSelection: false,
+                hasApplyError: true,
+                selectedMetalRTSTTModelId: nil,
+                downloadedMetalRTSTTModelIDs: []
+            )
+        )
+        #expect(
+            !ModelsSettingsSectionPolicy.shouldShowMetalRTSTTSection(
+                isUsingMetalRT: false,
+                preferredEngineIsMetalRT: false,
+                isApplyingMetalRTSelection: false,
+                hasApplyError: false,
+                selectedMetalRTSTTModelId: nil,
+                downloadedMetalRTSTTModelIDs: []
+            )
+        )
+        #expect(
+            ModelsSettingsSectionPolicy.shouldShowMetalRTSTTSection(
+                isUsingMetalRT: false,
+                preferredEngineIsMetalRT: false,
+                isApplyingMetalRTSelection: false,
+                hasApplyError: false,
+                selectedMetalRTSTTModelId: "metalrt-whisper-large-v3",
+                downloadedMetalRTSTTModelIDs: []
+            )
+        )
+        #expect(
+            ModelsSettingsSectionPolicy.shouldShowMetalRTSTTSection(
+                isUsingMetalRT: false,
+                preferredEngineIsMetalRT: false,
+                isApplyingMetalRTSelection: false,
+                hasApplyError: false,
+                selectedMetalRTSTTModelId: nil,
+                downloadedMetalRTSTTModelIDs: ["metalrt-whisper-large-v3"]
+            )
+        )
     }
 
     @Test func metalRTUsesBeginnerFriendlySpeechRecognitionCopy() {
@@ -303,6 +379,23 @@ struct ModelCatalogTests {
         )
     }
 
+    @Test func offlineSTTCopyExplainsParakeetAvailabilityDuringMetalRT() {
+        #expect(
+            ModelsSettingsCopy.offlineSTTSectionTitle(isUsingMetalRT: true) == "Offline Speech-to-Text"
+        )
+        #expect(
+            ModelsSettingsCopy.offlineSTTSectionTitle(isUsingMetalRT: false) == "Speech-to-Text"
+        )
+        #expect(
+            ModelsSettingsCopy.offlineSTTSelectionNoteText(isUsingMetalRT: true)
+                == "Offline models like Parakeet are only used outside MetalRT. Selecting one here saves it for the next non-MetalRT launch."
+        )
+        #expect(
+            ModelsSettingsCopy.offlineSTTSelectionNoteText(isUsingMetalRT: false)
+                == "Offline STT selection is saved for the next launch."
+        )
+    }
+
     @Test func runtimeSpeechRecognitionCopyIsBeginnerFriendly() {
         #expect(ModelsSettingsCopy.runtimeBadgeTitle == "In Use")
         #expect(
@@ -310,13 +403,31 @@ struct ModelCatalogTests {
         )
     }
 
-    private func assertResolvedFileURLs(for entry: MetalRTSTTEntry, expectedPaths: [String]) {
-        let actualPaths = entry.files.map { remotePath(in: $0.url) }
-        #expect(actualPaths == expectedPaths)
+    @Test func modelStatusSummaryIncludesSpeechRecognitionModelWhenAvailable() {
+        #expect(
+            ModelDisplayFormatter.statusSummary(
+                activeLLMName: "Liquid LFM2 1.2B Tool",
+                activeSTTName: "Parakeet TDT 0.6B v3"
+            ) == "LLM: Liquid LFM2 1.2B Tool\nSpeech: Parakeet TDT 0.6B v3"
+        )
     }
 
-    private func remotePath(in url: URL) -> String {
-        let marker = "/resolve/main/"
+    @Test func modelStatusSummaryOmitsSpeechRecognitionLineWhenUnavailable() {
+        #expect(
+            ModelDisplayFormatter.statusSummary(
+                activeLLMName: "Liquid LFM2 1.2B Tool",
+                activeSTTName: ""
+            ) == "LLM: Liquid LFM2 1.2B Tool"
+        )
+    }
+
+    private func assertResolvedFileURLs(for entry: MetalRTSTTEntry, expectedSuffixes: [String]) {
+        let actualSuffixes = entry.files.map { resolvedURLSuffix(in: $0.url) }
+        #expect(actualSuffixes == expectedSuffixes)
+    }
+
+    private func resolvedURLSuffix(in url: URL) -> String {
+        let marker = "huggingface.co/"
         let absoluteString = url.absoluteString
         guard let range = absoluteString.range(of: marker) else {
             Issue.record("Unexpected MetalRT file URL: \(absoluteString)")
